@@ -14,6 +14,7 @@ from .connectors import ConnectorRegistry
 from .connectors.apify import ApifyConnector
 from .connectors.forms import FormWebhookConnector, MetaLeadAdsConnector, parse_csv, parse_portal_email, verify_hmac
 from .connectors.reddit import RedditConnector
+from .connectors.whatsapp import handle_inbound, make_sender, parse_inbound
 from .db import DB
 from .models import Signal
 from .inventory import import_projects_csv, match as match_projects
@@ -74,11 +75,12 @@ class PortalEmailIn(BaseModel):
     message_id: str
 
 
-def create_app(settings: Settings | None = None, db: DB | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_sender=None) -> FastAPI:
     s = settings or Settings()
     db = db or DB(s.db_path)
     pipe = Pipeline(db, s)
     limiter = RateLimiter(5, 10 * 60)
+    wa_sender = whatsapp_sender or make_sender(s)
     reg = ConnectorRegistry()
     meta, forms = MetaLeadAdsConnector(s), FormWebhookConnector(s)
     for c in (RedditConnector(s), ApifyConnector(s), meta, forms):
@@ -160,6 +162,20 @@ def create_app(settings: Settings | None = None, db: DB | None = None) -> FastAP
         if not verify_hmac(s.meta_app_secret, body, x_hub_signature_256):
             raise HTTPException(401, "bad signature")
         return pipe.ingest_many(meta.parse_webhook(json.loads(body)))
+
+    @app.get("/webhooks/whatsapp", response_class=PlainTextResponse)
+    def wa_verify(request: Request):
+        q = request.query_params
+        if q.get("hub.mode") == "subscribe" and s.meta_verify_token and q.get("hub.verify_token") == s.meta_verify_token:
+            return q.get("hub.challenge", "")
+        raise HTTPException(403, "verification failed")
+
+    @app.post("/webhooks/whatsapp")
+    async def wa_hook(request: Request, x_hub_signature_256: str = Header(default="")):
+        body = await request.body()
+        if not verify_hmac(s.meta_app_secret, body, x_hub_signature_256):
+            raise HTTPException(401, "bad signature")
+        return [handle_inbound(pipe, wa_sender, m) for m in parse_inbound(json.loads(body))]
 
     @app.post("/webhooks/form/{platform}")
     async def form_hook(platform: str, request: Request, x_signature: str = Header(default="")):

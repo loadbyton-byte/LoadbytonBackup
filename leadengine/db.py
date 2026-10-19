@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS projects(
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, developer TEXT, area TEXT, emirate TEXT, min_price REAL, max_price REAL,
   bedrooms TEXT DEFAULT '[]', handover_year INTEGER, payment_plan TEXT
 );
+CREATE TABLE IF NOT EXISTS conversations(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE, channel TEXT NOT NULL,
+  state TEXT DEFAULT '{}', transcript TEXT DEFAULT '[]', updated_at TEXT, UNIQUE(lead_id, channel)
+);
 CREATE TABLE IF NOT EXISTS agents(
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT, email TEXT,
   areas TEXT DEFAULT '[]', languages TEXT DEFAULT '["en"]', weight INTEGER DEFAULT 1, max_open INTEGER DEFAULT 25, active INTEGER DEFAULT 1

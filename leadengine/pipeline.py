@@ -125,6 +125,7 @@ class Pipeline:
                     c.execute("UPDATE signals SET lead_id=? WHERE lead_id=?", (lead_id, other))
                     c.execute("UPDATE OR IGNORE identifiers SET lead_id=? WHERE lead_id=?", (lead_id, other))
                     c.execute("UPDATE activities SET lead_id=? WHERE lead_id=?", (lead_id, other))
+                    c.execute("UPDATE OR IGNORE conversations SET lead_id=? WHERE lead_id=?", (lead_id, other))
                     c.execute("DELETE FROM leads WHERE id=?", (other,))
             for k, v in ids:
                 c.execute("INSERT OR IGNORE INTO identifiers(kind,value,lead_id) VALUES(?,?,?)", (k, v, lead_id))

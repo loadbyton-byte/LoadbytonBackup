@@ -28,6 +28,10 @@ class Settings:
     # Public lead capture: comma-separated browser origins allowed to POST /capture (empty = same host only).
     capture_origins: list[str] = field(default_factory=lambda: [o.strip() for o in _env("CAPTURE_ORIGINS").split(",") if o.strip()])
     public_url: str = field(default_factory=lambda: _env("PUBLIC_URL"))  # base URL embedded in /widget.js (defaults to the request host)
+    # WhatsApp Cloud API. Sending is OFF by default (dry-run): replies are only recorded until explicitly enabled.
+    whatsapp_send_enabled: bool = field(default_factory=lambda: _env("WHATSAPP_SEND_ENABLED").lower() in ("1", "true", "yes"))
+    whatsapp_token: str = field(default_factory=lambda: _env("WHATSAPP_TOKEN"))
+    whatsapp_phone_id: str = field(default_factory=lambda: _env("WHATSAPP_PHONE_ID"))
     # Connectors
     reddit_client_id: str = field(default_factory=lambda: _env("REDDIT_CLIENT_ID"))
     reddit_client_secret: str = field(default_factory=lambda: _env("REDDIT_CLIENT_SECRET"))
