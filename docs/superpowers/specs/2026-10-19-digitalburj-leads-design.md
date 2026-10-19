@@ -90,3 +90,15 @@ load (no 404s) and no console errors. Existing 46 tests keep passing.
 
 (1) brand layer + static serving → (2) distribution/escalation → (3) ROI → (4) inventory matching → (5) widget → (6) WhatsApp qualification →
 (7) portal adapters/repeat-enquiry → (8) docs/README rebrand. Each step ships with tests and a commit.
+
+## Addendum (2026-10-19, requested after approval): three further capabilities
+
+7. **Deal-cost, mortgage and yield calculators** — `calculators.py`. Transaction costs (DLD transfer %, agency % + VAT, mortgage
+   registration), monthly mortgage payment, gross/net rental yield, max loan-to-value by buyer type. All rates are **configuration with
+   defaults flagged "verify current rules"**, never asserted as law. A per-lead "deal sheet" uses the lead's budget.
+8. **Viewing scheduler** — `viewings.py`. Schedule a viewing for a lead + agent with overlap detection, lead status → `viewing`,
+   and RFC 5545 `.ics` export per agent for calendar subscription.
+9. **Next-best-action & follow-up tasks** — `nba.py`. Rule-based actions per lead (assign now, call, send matches, nurture day 2/5/10,
+   request valuation visit) each carrying its compliance verdict; `/tasks/today` aggregates per agent. Drafts only — nothing is sent.
+
+Delivery order extends to: …(7) portal adapters → (8) calculators → (9) viewings → (10) next-best-action → (11) dashboard + EN/AR UI → (12) docs.
