@@ -41,7 +41,19 @@ CREATE TABLE IF NOT EXISTS activities(
   ts TEXT, kind TEXT, channel TEXT, note TEXT
 );
 CREATE TABLE IF NOT EXISTS stats(key TEXT PRIMARY KEY, value INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS agents(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT, email TEXT,
+  areas TEXT DEFAULT '[]', languages TEXT DEFAULT '["en"]', weight INTEGER DEFAULT 1, max_open INTEGER DEFAULT 25, active INTEGER DEFAULT 1
+);
+
 """
+
+
+# Columns added after the first release: (table, column, declaration). Applied idempotently to existing databases.
+MIGRATIONS: list[tuple[str, str, str]] = [
+    ("leads", "assigned_agent_id", "INTEGER"),
+    ("leads", "escalation_level", "INTEGER DEFAULT 0"),
+]
 
 
 class DB:
@@ -54,6 +66,14 @@ class DB:
         if path != ":memory:":
             self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        for table, column, decl in MIGRATIONS:
+            have = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+            if column not in have:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+        self.conn.commit()
 
     @contextmanager
     def tx(self) -> Iterator[sqlite3.Connection]:

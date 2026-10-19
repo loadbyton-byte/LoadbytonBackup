@@ -10,6 +10,7 @@ from typing import Callable
 from .compliance import Compliance
 from .config import Settings
 from .db import DB
+from .distribution import Distribution
 from .identity import identifiers_for, normalize_email, normalize_phone
 from .models import Signal, utcnow
 from .nlp.intent import Intent, classify, fill_entities
@@ -35,6 +36,7 @@ class Pipeline:
         self.db = db
         self.s = settings or Settings()
         self.compliance = Compliance(db, self.s)
+        self.distribution = Distribution(db)
         self.llm_refiner = llm_refiner
 
     # ------------------------------------------------------------------ ingest
@@ -76,7 +78,9 @@ class Pipeline:
             if email:
                 c.execute("UPDATE leads SET email=COALESCE(email,?) WHERE id=?", (email, lead_id))
         self.recompute(lead_id)
-        lead = self.db.one("SELECT score,tier FROM leads WHERE id=?", (lead_id,))
+        lead = self.db.one("SELECT score,tier,assigned_agent_id FROM leads WHERE id=?", (lead_id,))
+        if lead["tier"] in ("HOT", "WARM") and lead["assigned_agent_id"] is None:
+            self.distribution.assign(lead_id)
         self.db.audit("system", "ingest", lead_id, platform=sig.platform, source_type=sig.source_type, label=it.label)
         return IngestResult("created" if created else "merged", lead_id, lead["score"], lead["tier"])
 

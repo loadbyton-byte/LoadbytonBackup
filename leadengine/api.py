@@ -39,6 +39,24 @@ class StatusIn(BaseModel):
     note: str | None = None
 
 
+class AgentIn(BaseModel):
+    name: str
+    phone: str | None = None
+    email: str | None = None
+    areas: list[str] = []
+    languages: list[str] = ["en"]
+    weight: int = 1
+    max_open: int = 25
+
+
+class AgentPatch(BaseModel):
+    active: bool | None = None
+    weight: int | None = None
+    max_open: int | None = None
+    areas: list[str] | None = None
+    languages: list[str] | None = None
+
+
 class PortalEmailIn(BaseModel):
     portal: str
     subject: str = ""
@@ -201,6 +219,44 @@ def create_app(settings: Settings | None = None, db: DB | None = None) -> FastAP
     @app.post("/optout")
     def optout(p: OptOutIn):  # deliberately unauthenticated: anyone can opt out
         return {"leads_erased": pipe.opt_out(p.phone, p.email, p.handle, p.platform)}
+
+    # ---------------------------------------------------------------- agents & routing
+    def agent_dict(r, open_leads: int = 0) -> dict:
+        d = dict(r)
+        d["areas"], d["languages"], d["active"], d["open_leads"] = json.loads(d["areas"]), json.loads(d["languages"]), bool(d["active"]), open_leads
+        return d
+
+    @app.post("/agents")
+    def add_agent(a: AgentIn, _=Depends(auth)):
+        aid = pipe.distribution.add_agent(a.name, phone=a.phone, email=a.email, areas=tuple(a.areas), languages=tuple(a.languages),
+                                          weight=a.weight, max_open=a.max_open)
+        return agent_dict(db.one("SELECT * FROM agents WHERE id=?", (aid,)))
+
+    @app.get("/agents")
+    def list_agents(_=Depends(auth)):
+        counts = pipe.distribution.open_counts()
+        return [agent_dict(r, counts.get(r["id"], 0)) for r in db.q("SELECT * FROM agents ORDER BY id")]
+
+    @app.patch("/agents/{agent_id}")
+    def patch_agent(agent_id: int, p: AgentPatch, _=Depends(auth)):
+        if not db.one("SELECT 1 FROM agents WHERE id=?", (agent_id,)):
+            raise HTTPException(404, "agent not found")
+        fields = {k: v for k, v in p.model_dump(exclude_none=True).items()}
+        with db.tx() as c:
+            for k, v in fields.items():
+                c.execute(f"UPDATE agents SET {k}=? WHERE id=?",
+                          (json.dumps(v) if isinstance(v, list) else int(v) if isinstance(v, bool) else v, agent_id))
+        return agent_dict(db.one("SELECT * FROM agents WHERE id=?", (agent_id,)), pipe.distribution.open_counts().get(agent_id, 0))
+
+    @app.post("/leads/{lead_id}/assign")
+    def assign(lead_id: int, _=Depends(auth)):
+        if not db.one("SELECT 1 FROM leads WHERE id=?", (lead_id,)):
+            raise HTTPException(404, "lead not found")
+        return {"assigned_agent_id": pipe.distribution.assign(lead_id, actor="api")}
+
+    @app.post("/maintenance/escalate")
+    def escalate(_=Depends(auth)):
+        return pipe.distribution.escalate_overdue()
 
     # ---------------------------------------------------------------- intelligence / ops
     @app.get("/radar")
