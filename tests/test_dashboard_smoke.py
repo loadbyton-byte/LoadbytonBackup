@@ -114,3 +114,32 @@ def test_arabic_toggle_sets_rtl_and_back(page):
 def test_phone_width_has_no_horizontal_scroll(page):
     page.set_viewport_size({"width": 375, "height": 800})
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+
+
+def test_agent_can_set_status_and_log_activity_from_the_dialog(page, base_url):
+    page.locator("#rows tr.row").last.click()
+    page.wait_for_selector("#dlg[open]")
+    lid = page.get_attribute("#dlg", "data-id")
+    page.select_option("#dlg #statussel", "contacted")
+    page.click("#dlg [data-act=status]")
+    page.wait_for_function("document.querySelector('#statusmsg').textContent === 'Saved'")
+    page.click("#dlg [data-act=log][data-kind=call]")
+    page.wait_for_function("document.querySelector('#statusmsg').textContent === 'Saved'")
+    lead = page.request.get(f"{base_url}/leads/{lid}").json()
+    assert lead["status"] == "contacted" and any(a["kind"] == "call" for a in lead["activities"])
+    assert page.problems == []
+
+
+def test_roi_period_filter_and_calendar_link_render(page):
+    page.click("nav.tabs [data-tab=roi]")
+    page.wait_for_selector("#roi-period")
+    page.wait_for_selector("#roi-rows >> text=reddit")
+    page.fill("#roi-period", "1999-01")
+    page.press("#roi-period", "Enter")
+    page.wait_for_function("document.querySelectorAll('#roi-rows tr').length === 0")      # nothing in that period
+    page.fill("#roi-period", "")
+    page.press("#roi-period", "Enter")
+    page.wait_for_selector("#roi-rows >> text=reddit")
+    page.click("nav.tabs [data-tab=agents]")
+    page.wait_for_selector("#agent-rows a[href*='viewings.ics']")
+    assert page.problems == []

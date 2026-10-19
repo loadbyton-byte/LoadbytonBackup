@@ -49,7 +49,7 @@
 <main id="tab-agents" class="panel" hidden style="display:block"><div class="stack">
   <div class="card"><div class="toolbar"><h2 style="margin:0;flex:1" data-i18n="tab_agents">Agents &amp; queue</h2>
     <button id="escalate" class="primary small" type="button" data-i18n="escalate">Run SLA escalation</button><span id="escalate-out" class="mute"></span></div>
-    <div class="tablewrap"><table><thead><tr><th data-i18n="h_agent">Agent</th><th data-i18n="h_langs">Languages</th><th data-i18n="h_areas">Areas</th><th data-i18n="h_weight">Weight</th><th data-i18n="h_open">Open / max</th><th></th></tr></thead><tbody id="agent-rows"></tbody></table></div>
+    <div class="tablewrap"><table><thead><tr><th data-i18n="h_agent">Agent</th><th data-i18n="h_langs">Languages</th><th data-i18n="h_areas">Areas</th><th data-i18n="h_weight">Weight</th><th data-i18n="h_open">Open / max</th><th data-i18n="h_calendar">Calendar</th><th></th></tr></thead><tbody id="agent-rows"></tbody></table></div>
     <form id="agent-form" class="inline">
       <label><span data-i18n="h_agent">Agent</span><input name="name" required maxlength="80"></label>
       <label><span data-i18n="h_langs">Languages</span><select name="languages"><option value="en">English</option><option value="en,ar">English + العربية</option><option value="ar">العربية</option></select></label>
@@ -66,6 +66,7 @@
   <p id="task-empty" class="empty" hidden data-i18n="empty_tasks">Nothing due today.</p></div></main>
 
 <main id="tab-roi" class="panel" hidden style="display:block"><div class="card">
+  <div class="toolbar"><label class="mute" for="roi-period" data-i18n="h_period">Period</label><input id="roi-period" placeholder="2026-10" maxlength="7" style="width:110px" aria-label="Period"><span class="mute" data-i18n="period_note">leave empty for all time</span></div>
   <div class="tablewrap"><table><thead><tr><th data-i18n="h_source">Source</th><th data-i18n="h_leads">Leads</th><th data-i18n="h_qualified">Qualified</th><th data-i18n="h_won">Won</th><th data-i18n="h_sla">Within SLA</th><th data-i18n="h_resp">Median reply (min)</th><th data-i18n="h_spend">Spend (AED)</th><th data-i18n="h_cpq">Cost / qualified</th><th data-i18n="h_cpw">Cost / won</th></tr></thead><tbody id="roi-rows"></tbody></table></div>
   <form id="spend-form" class="inline">
     <label><span data-i18n="h_source">Source</span><input name="source" required placeholder="reddit"></label>
@@ -109,6 +110,8 @@ const T = {
     deactivate:'Pause', activate:'Activate', why:'Why this score', evidence:'Evidence', nba:'Next best actions', matches:'Matching projects', dealsheet:'Deal sheet', calc:'Calculate',
     cash_needed:'Cash needed (incl. down payment)', down:'Down payment', loan:'Loan', monthly:'Monthly payment', costs:'Transaction costs', viewing:'Schedule a viewing', save:'Save', start:'Start (UAE time)',
     duration:'Minutes', location:'Location', drafts:'Draft outreach', needs_approval:'(human approval required)', close:'Close', allowed:'Allowed', blocked:'Blocked', none:'None', status:'Status', reply_by:'reply by',
+    h_calendar:'Calendar', h_period:'Period', period_note:'leave empty for all time', status_log:'Status & activity', k_call:'Log call', k_message:'Log message', k_follow_up:'Log follow-up', k_matches_sent:'Matches sent', k_note:'Add note',
+    s_new:'New', s_contacted:'Contacted', s_qualified:'Qualified', s_viewing:'Viewing', s_won:'Won', s_lost:'Lost',
     escalated:'reassigned', flagged:'flagged', no_matches:'No matching projects.', no_actions:'No actions due.', saved:'Saved', imported:'Imported', skipped:'skipped'},
   ar: {apikey:'مفتاح API (إن وجد)', refresh:'تحديث', demo:'تحميل بيانات تجريبية', tab_leads:'العملاء المحتملون', tab_agents:'الوكلاء والطابور', tab_tasks:'مهام اليوم', tab_roi:'العائد حسب المصدر', tab_inventory:'المخزون',
     h_score:'التقييم', h_lead:'العميل', h_looking:'يبحث عن', h_sources:'المصادر', h_consent:'الموافقة', empty_leads:'لا يوجد عملاء بعد — حمّل بيانات تجريبية أو اربط مصدراً.',
@@ -123,6 +126,8 @@ const T = {
     deactivate:'إيقاف مؤقت', activate:'تفعيل', why:'سبب التقييم', evidence:'الأدلة', nba:'أفضل الإجراءات التالية', matches:'مشاريع مناسبة', dealsheet:'ورقة الصفقة', calc:'احسب',
     cash_needed:'النقد المطلوب (شامل الدفعة الأولى)', down:'الدفعة الأولى', loan:'القرض', monthly:'القسط الشهري', costs:'تكاليف المعاملة', viewing:'جدولة معاينة', save:'حفظ', start:'البداية (توقيت الإمارات)',
     duration:'دقائق', location:'الموقع', drafts:'مسودات التواصل', needs_approval:'(تتطلب موافقة بشرية)', close:'إغلاق', allowed:'مسموح', blocked:'محظور', none:'لا شيء', status:'الحالة', reply_by:'الرد قبل',
+    h_calendar:'التقويم', h_period:'الفترة', period_note:'اتركه فارغاً لكل الفترات', status_log:'الحالة والنشاط', k_call:'تسجيل مكالمة', k_message:'تسجيل رسالة', k_follow_up:'تسجيل متابعة', k_matches_sent:'تم إرسال المشاريع', k_note:'إضافة ملاحظة',
+    s_new:'جديد', s_contacted:'تم التواصل', s_qualified:'مؤهل', s_viewing:'معاينة', s_won:'مغلقة', s_lost:'خسارة',
     escalated:'أعيد تعيينها', flagged:'تنبيه للمدير', no_matches:'لا مشاريع مناسبة.', no_actions:'لا إجراءات مستحقة.', saved:'تم الحفظ', imported:'تم استيراد', skipped:'تم تخطي'},
 };
 const t = k => (T[LANG][k] ?? T.en[k] ?? k);
@@ -188,11 +193,12 @@ async function loadAgents() {
     const [agents, overdue] = await Promise.all([api('/agents'), api('/leads?overdue=true')]);
     $('#agent-rows').innerHTML = agents.map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.languages.join(', '))}</td><td>${esc(a.areas.join(', ') || '—')}</td>
       <td>${Number(a.weight)}</td><td>${Number(a.open_leads)} / ${Number(a.max_open)}</td>
+      <td><a href="/viewings.ics?agent_id=${Number(a.id)}${a.feed_token ? '&token=' + encodeURIComponent(a.feed_token) : ''}">.ics</a></td>
       <td><button class="small" data-agent="${Number(a.id)}" data-active="${a.active ? 0 : 1}">${t(a.active ? 'deactivate' : 'activate')}</button></td></tr>`).join('');
     $('#overdue-rows').innerHTML = overdue.map(l => `<tr class="row" data-id="${Number(l.id)}"><td>${pill(l.tier)} ${Number(l.score)}</td><td><b>${esc(l.display_name || 'Lead #' + l.id)}</b></td>
       <td>${esc(l.primary_area || '—')}</td><td class="mute">${t('reply_by')} ${esc(when(l.sla_due_at))}</td><td>${l.assigned_agent_id ? '#' + Number(l.assigned_agent_id) : '—'}</td></tr>`).join('')
       || `<tr><td class="mute">${t('none')}</td></tr>`;
-  } catch (e) { $('#agent-rows').innerHTML = `<tr><td colspan="6">${err(e)}</td></tr>`; }
+  } catch (e) { $('#agent-rows').innerHTML = `<tr><td colspan="7">${err(e)}</td></tr>`; }
 }
 $('#agent-rows').addEventListener('click', async e => {
   const b = e.target.closest('[data-agent]'); if (!b) return;
@@ -235,7 +241,8 @@ $('#task-rows').addEventListener('click', e => { const tr = e.target.closest('tr
 /* ---------------------------------------------------------------- roi */
 async function loadRoi() {
   try {
-    const rows = await api('/roi');
+    const per = $('#roi-period').value.trim();
+    const rows = await api('/roi' + (per ? '?period=' + encodeURIComponent(per) : ''));
     $('#roi-rows').innerHTML = rows.map(r => `<tr><td><b>${esc(r.source)}</b></td><td>${Number(r.leads)}</td><td>${Number(r.qualified)}</td><td>${Number(r.won)}</td>
       <td>${r.within_sla_pct == null ? '—' : Number(r.within_sla_pct) + '%'}</td><td>${num(r.median_first_response_min)}</td><td>${Number(r.spend_aed).toLocaleString()}</td>
       <td>${num(r.cost_per_qualified)}</td><td>${num(r.cost_per_won)}</td></tr>`).join('');
@@ -247,6 +254,9 @@ $('#spend-form').addEventListener('submit', async e => {
   catch (x) { alert(x.message); }
   loadRoi();
 });
+
+$('#roi-period').addEventListener('keydown', e => { if (e.key === 'Enter') loadRoi(); });
+$('#roi-period').addEventListener('change', loadRoi);
 
 /* ---------------------------------------------------------------- inventory */
 async function loadInventory() {
@@ -266,6 +276,12 @@ $('#inv-import').onclick = async () => {
 };
 
 /* ---------------------------------------------------------------- lead dialog */
+function loadNba(id) {
+  return api(`/leads/${id}/next-actions`).then(a => {
+    $('#nba').innerHTML = a.length ? a.map(k => `<div><b>${esc(t('a_' + k.action))}</b> ${k.channel ? `<span class="chip ${k.allowed ? 'ok' : 'no'}" title="${esc(k.compliance_reason)}">${esc(k.channel)}</span>` : ''}
+      <span class="mute">${esc(k.reason)}</span></div>`).join('') : t('no_actions');
+  }).catch(e => { $('#nba').innerHTML = err(e); });
+}
 async function openLead(id) {
   const dlg = $('#dlg');
   let l;
@@ -286,16 +302,18 @@ async function openLead(id) {
       <label>${t('duration')}<select name="duration_min"><option>30</option><option>45</option><option>60</option></select></label>
       <label>${t('location')}<input name="location" maxlength="200"></label>
       <button class="primary" type="submit">${t('save')}</button></form><div id="viewmsg" class="mute"></div></div>
+    <div><h2>${t('status_log')}</h2><div class="toolbar">
+      <select id="statussel" aria-label="${t('status')}">${['new', 'contacted', 'qualified', 'viewing', 'won', 'lost'].map(s => `<option value="${s}"${l.status === s ? ' selected' : ''}>${t('s_' + s)}</option>`).join('')}</select>
+      <button class="small primary" data-act="status" type="button">${t('save')}</button>
+      ${['call', 'message', 'follow_up', 'matches_sent', 'note'].map(k => `<button class="small" data-act="log" data-kind="${k}" type="button">${t('k_' + k)}</button>`).join(' ')}
+      </div><div id="statusmsg" class="mute"></div></div>
     <div><h2>${t('drafts')} <span class="mute">${t('needs_approval')}</span></h2>
       ${['public_reply', 'whatsapp', 'call', 'email'].map(c => `<button class="small" data-act="draft" data-ch="${c}" type="button">${c}</button>`).join(' ')}<div id="draft"></div></div>
     <div><h2>${t('evidence')}</h2>${sigs}</div>
     <p style="text-align:end"><button id="close" type="button">${t('close')}</button></p></div>`;
   dlg.dataset.id = l.id; dlg.showModal();
   $('#close').onclick = () => dlg.close();
-  api(`/leads/${id}/next-actions`).then(a => {
-    $('#nba').innerHTML = a.length ? a.map(k => `<div><b>${esc(t('a_' + k.action))}</b> ${k.channel ? `<span class="chip ${k.allowed ? 'ok' : 'no'}" title="${esc(k.compliance_reason)}">${esc(k.channel)}</span>` : ''}
-      <span class="mute">${esc(k.reason)}</span></div>`).join('') : t('no_actions');
-  }).catch(e => { $('#nba').innerHTML = err(e); });
+  loadNba(id);
   api(`/leads/${id}/matches`).then(m => {
     $('#matches').innerHTML = m.length ? m.map(x => `<div><b>${esc(x.project)}</b> <span class="chip">${Number(x.score)}</span>${x.golden_visa_fit ? '<span class="chip ok">golden visa</span>' : ''}
       <span class="mute">${esc(x.reasons.join(' · '))}</span></div>`).join('') : t('no_matches');
@@ -311,6 +329,14 @@ $('#dlg').addEventListener('click', async e => {
         <dt>${t('loan')}</dt><dd>AED ${n(d.loan)} (${Number(d.ltv_pct)}%)</dd><dt>${t('monthly')}</dt><dd>AED ${n(d.monthly_payment)}</dd><dt>${t('costs')}</dt><dd>AED ${n(d.costs.total_costs)}</dd></dl>
         <p class="mute">${esc(d.disclaimer)}</p>`;
     } catch (x) { $('#dealsheet').innerHTML = err(x); }
+  } else if (b.dataset.act === 'status' || b.dataset.act === 'log') {
+    const msg = $('#statusmsg'); msg.textContent = '';
+    try {
+      if (b.dataset.act === 'status') await post(`/leads/${id}/status`, {status: $('#statussel').value});
+      else await post(`/leads/${id}/activities`, {kind: b.dataset.kind});
+      msg.textContent = t('saved');
+      loadNba(id); loaders[TAB]();
+    } catch (x) { msg.innerHTML = err(x); }
   } else if (b.dataset.act === 'draft') {
     try {
       const d = await post(`/leads/${id}/outreach?channel=${encodeURIComponent(b.dataset.ch)}`);

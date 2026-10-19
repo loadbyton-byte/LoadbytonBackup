@@ -25,22 +25,40 @@ def parse_price(raw: str | None) -> float | None:
     return parse_budget(normalize(s))[1]
 
 
+MIN_PRICE = 50_000          # below this a "price" is almost certainly a data-entry error
+MAX_BEDS_RANGE = 10
+
+
 def parse_beds(raw: str | None) -> list[int]:
+    """'studio,1,2' / '1-3' -> [0,1,2]. Oversized ranges (e.g. '0-100000000') yield [] instead of exploding."""
     out: set[int] = set()
     for part in _BEDS_SPLIT.split((raw or "").lower()):
         part = part.strip()
         if part == "studio":
             out.add(0)
         elif m := re.fullmatch(r"(\d+)\s*-\s*(\d+)", part):
-            out.update(range(int(m.group(1)), int(m.group(2)) + 1))
+            lo, hi = int(m.group(1)), int(m.group(2))
+            if not 0 <= hi - lo <= MAX_BEDS_RANGE:
+                return []
+            out.update(range(lo, hi + 1))
         elif part.isdigit():
             out.add(int(part))
     return sorted(out)
 
 
 def import_projects_csv(db: DB, text: str) -> dict:
+    """Header names are case/space-insensitive. Rows are skipped (and reported) when the column count is off, the name or price is
+    missing/implausible, or bedrooms can't be understood. Re-importing updates projects keyed by (name, developer)."""
+    reader = csv.reader(io.StringIO(text))
+    header = [h.strip().lower().replace(" ", "_") for h in next(reader, [])]
     imported, skipped = 0, []
-    for n, row in enumerate(csv.DictReader(io.StringIO(text)), start=1):
+    for n, cells in enumerate(reader, start=1):
+        if not any(c.strip() for c in cells):
+            continue
+        if len(cells) != len(header):
+            skipped.append((n, f"column count {len(cells)} != {len(header)} in header (quote values that contain commas)"))
+            continue
+        row = dict(zip(header, cells))
         name = (row.get("name") or "").strip()
         if not name:
             skipped.append((n, "missing name"))
@@ -53,16 +71,28 @@ def import_projects_csv(db: DB, text: str) -> dict:
         if lo > hi:
             skipped.append((n, "min_price > max_price"))
             continue
+        if lo < MIN_PRICE:
+            skipped.append((n, f"price below AED {MIN_PRICE:,} looks like a data error"))
+            continue
+        beds_raw = (row.get("bedrooms") or "").strip()
+        beds = parse_beds(beds_raw)
+        if beds_raw and not beds:
+            skipped.append((n, "bedrooms not understood (use e.g. 'studio,1,2' or '1-3')"))
+            continue
         areas, emirates = extract_areas(row.get("area") or "")
         area = areas[0] if areas else (row.get("area") or "").strip() or None
         year = re.search(r"20\d\d", row.get("handover") or "")
+        dev = (row.get("developer") or "").strip() or None
+        vals = (dev, area, (row.get("emirate") or "").strip() or (emirates[0] if emirates else None), lo, hi, json.dumps(beds),
+                int(year.group(0)) if year else None, (row.get("payment_plan") or "").strip() or None)
         with db.tx() as c:
-            c.execute("INSERT INTO projects(name,developer,area,emirate,min_price,max_price,bedrooms,handover_year,payment_plan) "
-                      "VALUES(?,?,?,?,?,?,?,?,?)",
-                      (name, (row.get("developer") or "").strip() or None, area,
-                       (row.get("emirate") or "").strip() or (emirates[0] if emirates else None), lo, hi,
-                       json.dumps(parse_beds(row.get("bedrooms"))), int(year.group(0)) if year else None,
-                       (row.get("payment_plan") or "").strip() or None))
+            existing = c.execute("SELECT id FROM projects WHERE name=? AND COALESCE(developer,'')=?", (name, dev or "")).fetchone()
+            if existing:
+                c.execute("UPDATE projects SET developer=?,area=?,emirate=?,min_price=?,max_price=?,bedrooms=?,handover_year=?,payment_plan=? WHERE id=?",
+                          (*vals, existing["id"]))
+            else:
+                c.execute("INSERT INTO projects(name,developer,area,emirate,min_price,max_price,bedrooms,handover_year,payment_plan) "
+                          "VALUES(?,?,?,?,?,?,?,?,?)", (name, *vals))
         imported += 1
     return {"imported": imported, "skipped": skipped}
 

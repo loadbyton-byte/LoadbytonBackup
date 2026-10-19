@@ -26,7 +26,7 @@ sources ─► connectors ─► suppression check ─► bilingual intent NLP �
 | **Deal sheet & calculators** | Transaction costs (DLD, agency + VAT, mortgage registration), monthly payment, gross/net yield, cash needed. All rates are configuration marked *verify current rules*. |
 | **Viewings** | Per-agent overlap detection, lead status → `viewing`, RFC 5545 `.ics` feed per agent for calendar subscription. |
 | **Next-best-action** | Per-lead tasks (assign, call overdue, first response, send matches, nurture day 2/5/10, valuation visit, re-engage) each showing whether the channel is *permitted*. `/tasks/today` per agent. |
-| **ROI by source** | Spend per source/campaign → leads, qualified, won, median first-response time, % within SLA, cost per lead / qualified / won. Ratios are `null` (never an error) when there's nothing to divide by. |
+| **ROI by source** | Spend per source (optionally per month) → leads, qualified, won, median first-response time, % within SLA, cost per lead / qualified / won. Ratios are `null` (never an error) when there's nothing to divide by. |
 | **Capture widget** | `widget.js` + `POST /capture`: origin allow-list, honeypot, rate limit, explicit consent checkbox whose wording is stored as evidence. |
 | **Demand Radar** | De-identified demand by community with growth and buy/rent/supply mix. |
 | **Dashboard** | DigitalBurj brand (wordmark, palette, fonts), light/dark, English and Arabic (RTL), phone-friendly. |
@@ -77,7 +77,7 @@ pip install -r requirements-dev.txt && python -m pytest        # browser smoke t
 docker build -t digitalburj-leads . && docker run -p 8000:8000 -v $PWD/data:/data --env-file .env digitalburj-leads
 ```
 
-Set `LEADENGINE_API_KEY` for anything non-local (header `X-API-Key`). Webhooks authenticate by signature; `/capture`, `/widget.js` and
+Set `LEADENGINE_API_KEY` for anything non-local (header `X-API-Key`), `PUBLIC_URL` (the base URL baked into `widget.js`) and, behind a reverse proxy, `TRUSTED_PROXIES=<number of proxies>` so the capture rate limit sees real client IPs instead of a spoofable header. Webhooks authenticate by signature; `/capture`, `/widget.js` and
 `/optout` are public by design. **Schedule** `POST /maintenance/escalate` (every few minutes) and `POST /maintenance/purge` (daily).
 OpenAPI docs: `/docs`. Embed the widget:
 
@@ -108,13 +108,16 @@ HTTPS (reverse proxy or your host's TLS); webhooks and the capture widget need a
 
 ## Known limits (read before relying on it)
 
+- Weights/capacity are validated, but assignment and escalation are not transactional across concurrent workers — run one instance.
 - Intent detection is rule-based: auditable and free to run, but recall on slang/typos/Arabizi is limited. Plug an LLM in via `Pipeline(llm_refiner=fn)`.
 - **Connectors are tested against mocked/fixture data only** (Reddit, Meta, WhatsApp, Apify, portal emails — the portal fixtures are representative
   layouts, not captured feeds). Validate each against your live accounts first. Meta and WhatsApp need app/business verification.
 - Fees, LTV, mortgage rates, golden-visa threshold and calling hours are **configuration with indicative defaults** — verify current rules.
 - SQLite suits a single agency; swap `db.py` for Postgres at scale. The Demand Radar loads recent signals in Python.
 - The Arabic UI translates labels and chrome; server-generated explanations (compliance reasons, action reasons) are English.
-- `/viewings.ics?key=…` puts the API key in the URL because calendar apps can't send headers — treat the URL as a secret.
+- Calendar feeds (`/viewings.ics?agent_id=…&token=…`) use a per-agent, read-only token derived from the API key (shown on the Agents tab); the master key is header-only and is never accepted in a URL.
+- Opted-out people are ignored permanently (a returning WhatsApp message or widget submission is dropped silently). Whether to let an explicit new opt-in lift the suppression is a policy/legal decision left to you.
+- ROI groups spend by source (not campaign); use the Period filter (`YYYY-MM`) so spend and leads cover the same window. Names like "Bayut" are matched to `portal:bayut`.
 - Nothing verifies that a BRN or Trakheesi permit is valid; drafts just include what you configure.
 
 ## Brand

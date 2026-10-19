@@ -1,11 +1,19 @@
 """Viewing scheduler with per-agent overlap detection and RFC 5545 (.ics) export."""
 from __future__ import annotations
 
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 
 from .compliance import GST
 from .db import DB
 from .models import utcnow
+
+
+def feed_token(secret: str, agent_id: int) -> str:
+    """Read-only calendar-feed token for ONE agent. Derived with HMAC so it can't be turned back into the API key,
+    and a leaked feed URL exposes only that agent's viewings."""
+    return hmac.new(secret.encode(), f"ics:{agent_id}".encode(), hashlib.sha256).hexdigest()[:40]
 
 
 class ViewingConflict(Exception):

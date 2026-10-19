@@ -100,6 +100,7 @@ def handle_inbound(pipe, sender: Sender, inb: Inbound) -> dict:
         c.execute("INSERT INTO conversations(lead_id,channel,state,transcript,updated_at) VALUES(?,?,?,?,?) "
                   "ON CONFLICT(lead_id,channel) DO UPDATE SET state=excluded.state, transcript=excluded.transcript, updated_at=excluded.updated_at",
                   (lead_id, "whatsapp", json.dumps(state), json.dumps(transcript[-40:]), utcnow().isoformat()))
+    pipe.recompute(lead_id)                                             # conversation answers now outrank text heuristics
     if done and state["answers"].get("consent") is True and not was_consented:
         pipe.record_consent(lead_id, json.dumps({"channel": "whatsapp", "answers": state["answers"], "transcript": transcript[-12:]},
                                                 ensure_ascii=False), actor="whatsapp")

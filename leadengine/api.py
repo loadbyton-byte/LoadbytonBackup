@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .calculators import deal_costs, max_loan, mortgage_payment, rental_yield
 from .capture import MAX_BODY, RateLimiter, handle_capture, origin_allowed, widget_js
@@ -19,13 +19,14 @@ from .connectors.forms import FormWebhookConnector, MetaLeadAdsConnector, parse_
 from .connectors.reddit import RedditConnector
 from .connectors.whatsapp import handle_inbound, make_sender, parse_inbound
 from .db import DB
+from .distribution import canon_areas
 from .models import Signal, utcnow
 from .inventory import import_projects_csv, match as match_projects
 from .nba import next_actions, todays_tasks
 from .outreach import draft
 from .pipeline import Pipeline
 from .radar import demand_radar
-from .viewings import ViewingConflict, list_viewings, schedule as schedule_viewing, to_ics
+from .viewings import ViewingConflict, feed_token, list_viewings, schedule as schedule_viewing, to_ics
 from .roi import record_spend, roi_report
 
 DASH = Path(__file__).resolve().parent.parent / "dashboard" / "index.html"
@@ -54,14 +55,14 @@ class AgentIn(BaseModel):
     email: str | None = None
     areas: list[str] = []
     languages: list[str] = ["en"]
-    weight: int = 1
-    max_open: int = 25
+    weight: int = Field(1, ge=1, le=100)
+    max_open: int = Field(25, ge=0, le=10000)
 
 
 class AgentPatch(BaseModel):
     active: bool | None = None
-    weight: int | None = None
-    max_open: int | None = None
+    weight: int | None = Field(None, ge=1, le=100)
+    max_open: int | None = Field(None, ge=0, le=10000)
     areas: list[str] | None = None
     languages: list[str] | None = None
 
@@ -286,6 +287,14 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
         ok = origin and origin_allowed(origin, s.capture_origins, request.headers.get("host"))
         return {"Access-Control-Allow-Origin": origin, "Vary": "Origin"} if ok else {"Vary": "Origin"}
 
+    def client_ip(request: Request) -> str:
+        """The socket peer, unless TRUSTED_PROXIES says N proxies append to X-Forwarded-For — then the hop the outermost trusted proxy saw.
+        A client-supplied X-Forwarded-For prefix must never choose its own rate-limit bucket."""
+        peer = request.client.host if request.client else "?"
+        n = s.trusted_proxies
+        hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+        return hops[-n] if n > 0 and len(hops) >= n else peer
+
     @app.options("/capture", include_in_schema=False)
     def capture_preflight(request: Request):
         h = cors(request.headers.get("origin"), request)
@@ -303,8 +312,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
             payload = json.loads(raw or b"{}")
         except ValueError:
             return JSONResponse({"error": "invalid JSON"}, 400, headers=cors(origin, request))
-        ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "?"))
-        status, body = handle_capture(pipe, s, payload, origin, ip, limiter, host=request.headers.get("host"))
+        status, body = handle_capture(pipe, s, payload, origin, client_ip(request), limiter, host=request.headers.get("host"))
         return JSONResponse(body, status, headers=cors(origin, request) if status != 403 else {"Vary": "Origin"})
 
     @app.get("/widget.js", include_in_schema=False)
@@ -316,6 +324,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     def agent_dict(r, open_leads: int = 0) -> dict:
         d = dict(r)
         d["areas"], d["languages"], d["active"], d["open_leads"] = json.loads(d["areas"]), json.loads(d["languages"]), bool(d["active"]), open_leads
+        d["feed_token"] = feed_token(s.api_key, d["id"]) if s.api_key else None     # per-agent, read-only calendar feed token
         return d
 
     @app.post("/agents")
@@ -334,6 +343,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
         if not db.one("SELECT 1 FROM agents WHERE id=?", (agent_id,)):
             raise HTTPException(404, "agent not found")
         fields = {k: v for k, v in p.model_dump(exclude_none=True).items()}
+        if "areas" in fields:
+            fields["areas"] = canon_areas(fields["areas"])
         with db.tx() as c:
             for k, v in fields.items():
                 c.execute(f"UPDATE agents SET {k}=? WHERE id=?",
@@ -413,10 +424,13 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
         return list_viewings(db, agent_id)
 
     @app.get("/viewings.ics", include_in_schema=False)
-    def viewings_ics(agent_id: int | None = None, key: str = "", x_api_key: str = Header(default="")):
-        # Calendar apps can't send headers, so the feed also accepts ?key= (treat the URL as a secret; it can end up in access logs).
-        if s.api_key and not any(hmac.compare_digest(k.encode(), s.api_key.encode()) for k in (key, x_api_key)):
-            raise HTTPException(401, "invalid API key")
+    def viewings_ics(agent_id: int | None = None, token: str = "", x_api_key: str = Header(default="")):
+        # Calendar apps can't send headers: they use ?agent_id=&token= (a per-agent read-only token). The master key is header-only.
+        if s.api_key:
+            master = hmac.compare_digest(x_api_key.encode(), s.api_key.encode())
+            scoped = agent_id is not None and bool(token) and hmac.compare_digest(token.encode(), feed_token(s.api_key, agent_id).encode())
+            if not (master or scoped):
+                raise HTTPException(401, "invalid feed token")
         return Response(to_ics(list_viewings(db, agent_id)), media_type="text/calendar; charset=utf-8",
                         headers={"Cache-Control": "no-store"})
 
@@ -473,8 +487,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
             raise HTTPException(400, str(e))
 
     @app.get("/roi")
-    def roi(_=Depends(auth)):
-        return roi_report(db)
+    def roi(period: str | None = None, _=Depends(auth)):
+        return roi_report(db, period=period)
 
     @app.get("/stats")
     def stats(_=Depends(auth)):

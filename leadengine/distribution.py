@@ -6,11 +6,23 @@ from datetime import datetime, timedelta
 
 from .db import DB
 from .models import utcnow
+from .nlp.areas import extract_areas
 from .scoring import SLA_MINUTES
 
 OPEN_STATUSES = ("new", "contacted", "qualified", "viewing")
 MAX_HOPS = 2          # reassignments before a lead is flagged for the manager
 FLAGGED_LEVEL = MAX_HOPS + 1
+
+
+def canon_areas(areas) -> list[str]:
+    """'JVC' / 'Marina' -> canonical community names, so agent areas compare equal to lead areas."""
+    out: list[str] = []
+    for a in areas:
+        names, _ = extract_areas(str(a))
+        v = names[0] if names else str(a).strip()
+        if v and v not in out:
+            out.append(v)
+    return out
 
 
 class Distribution:
@@ -22,7 +34,7 @@ class Distribution:
                   languages: tuple[str, ...] = ("en",), weight: int = 1, max_open: int = 25) -> int:
         with self.db.tx() as c:
             cur = c.execute("INSERT INTO agents(name,phone,email,areas,languages,weight,max_open) VALUES(?,?,?,?,?,?,?)",
-                            (name, phone, email, json.dumps(list(areas)), json.dumps(list(languages)), max(weight, 1), max_open))
+                            (name, phone, email, json.dumps(canon_areas(areas)), json.dumps(list(languages)), max(weight, 1), max(max_open, 0)))
             return cur.lastrowid
 
     def open_counts(self) -> dict[int, int]:
@@ -42,7 +54,7 @@ class Distribution:
                 continue
             area_match = bool(lead["primary_area"]) and lead["primary_area"] in json.loads(a["areas"] or "[]")
             lang_match = bool(want_langs & set(json.loads(a["languages"] or "[]")))
-            key = (not area_match, not lang_match, counts.get(a["id"], 0) / a["weight"], a["id"])
+            key = (not area_match, not lang_match, counts.get(a["id"], 0) / max(a["weight"] or 1, 1), a["id"])
             if best_key is None or key < best_key:
                 best, best_key = a["id"], key
         return best

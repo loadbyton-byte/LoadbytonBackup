@@ -74,7 +74,7 @@ def test_ics_escaping_and_folding(pipe):
     for line in ics.split("\r\n"):
         assert len(line.encode()) <= 75
     flat = ics.replace("\r\n ", "")
-    assert "Marina\\, Tower\; Gate\\nline2" in flat and "Jr\; \\\\" in flat and "\r" not in flat.replace("\r\n", "")
+    assert "Marina\\, Tower\\; Gate\\nline2" in flat and "Jr\\; \\\\" in flat and "\r" not in flat.replace("\r\n", "")
     assert flat.count("LOCATION:") == 1 and "\nline2" not in flat
 
 
@@ -93,14 +93,15 @@ def client():
 def test_api_schedule_conflict_and_ics(client):
     H = {"x-api-key": "k"}
     client.post("/demo/seed", headers=H)
-    a = client.post("/agents", json={"name": "A"}, headers=H).json()["id"]
+    agent = client.post("/agents", json={"name": "A"}, headers=H).json()
+    a = agent["id"]
     body = {"start": "2026-03-10T10:00:00+04:00", "duration_min": 30, "location": "Marina Gate", "agent_id": a}
     assert client.post("/leads/1/viewings", json=body, headers=H).status_code == 200
     assert client.post("/leads/2/viewings", json={**body, "start": "2026-03-10T10:10:00+04:00"}, headers=H).status_code == 409
     assert client.post("/leads/9999/viewings", json=body, headers=H).status_code == 404
     assert client.post("/leads/2/viewings", json={**body, "duration_min": 1}, headers=H).status_code == 422
     assert client.get("/viewings.ics").status_code == 401
-    r = client.get(f"/viewings.ics?agent_id={a}&key=k")
+    r = client.get(f"/viewings.ics?agent_id={a}&token={agent['feed_token']}")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/calendar") and "BEGIN:VEVENT" in r.text
     assert client.get("/viewings.ics?key=wrong").status_code == 401
     assert client.get("/viewings", headers=H).json()[0]["location"] == "Marina Gate"

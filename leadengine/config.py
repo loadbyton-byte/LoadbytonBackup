@@ -56,6 +56,8 @@ class Settings:
     rates: Rates = field(default_factory=Rates.from_env)
     # Golden-visa property threshold in AED — configuration, not law: verify current rules before relying on it.
     golden_visa_min_aed: float = field(default_factory=lambda: float(_env("GOLDEN_VISA_MIN_AED", "2000000")))
+    # Number of reverse proxies in front of the app that append to X-Forwarded-For (0 = trust only the socket peer).
+    trusted_proxies: int = field(default_factory=lambda: int(_env("TRUSTED_PROXIES", "0") or 0))
     # Public lead capture: comma-separated browser origins allowed to POST /capture (empty = same host only).
     capture_origins: list[str] = field(default_factory=lambda: [o.strip() for o in _env("CAPTURE_ORIGINS").split(",") if o.strip()])
     public_url: str = field(default_factory=lambda: _env("PUBLIC_URL"))  # base URL embedded in /widget.js (defaults to the request host)

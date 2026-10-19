@@ -16,6 +16,7 @@ from .models import Signal
 CONSENT_TEXT = ("I agree to be contacted about this enquiry and similar properties by phone, WhatsApp or email. "
                 "I can opt out at any time.")
 MAX_BODY = 8000
+MAX_KEYS = 5000
 FIELD_CAPS = {"name": 100, "phone": 30, "email": 200, "message": 1000}
 EXTRA_FIELDS = {"looking_to": 40, "area": 80, "budget": 40, "bedrooms": 10}   # allow-listed qualification answers
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -33,9 +34,17 @@ class RateLimiter:
         while q and now - q[0] > self.window:
             q.popleft()
         q.append(now)
-        if len(self._hits) > 5000:
-            self._hits.clear()
+        if len(self._hits) > MAX_KEYS:
+            self._prune(now)
         return len(q) > self.n
+
+    def _prune(self, now: float) -> None:
+        """Drop expired keys; if still over capacity drop one-hit keys. Repeat offenders are never forgotten wholesale."""
+        for k in [k for k, q in self._hits.items() if not q or now - q[-1] > self.window]:
+            del self._hits[k]
+        if len(self._hits) > MAX_KEYS:
+            for k in [k for k, q in self._hits.items() if len(q) <= 1]:
+                del self._hits[k]
 
 
 def origin_allowed(origin: str | None, allowed: list[str], host: str | None) -> bool:

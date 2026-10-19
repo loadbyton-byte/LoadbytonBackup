@@ -13,6 +13,7 @@ from .db import DB
 from .distribution import Distribution
 from .identity import identifiers_for, normalize_email, normalize_phone
 from .models import Signal, utcnow
+from .nlp.areas import AREAS
 from .nlp.intent import Intent, classify, fill_entities
 from .scoring import SLA_MINUTES, score_signal, tier_for
 
@@ -20,6 +21,7 @@ LLMRefiner = Callable[[str, Intent], Intent]
 FORM_SOURCES = ("lead_form", "portal_inquiry")
 # Enquiring on several different listings within a week signals an active search.
 REPEAT_MIN_LISTINGS, REPEAT_WINDOW_DAYS, REPEAT_BONUS = 3, 7, 6
+CONVO_LABEL = {"buy": "buyer", "rent": "renter", "sell": "seller"}
 
 
 @dataclass
@@ -182,6 +184,19 @@ class Pipeline:
                     latest[k] = data[k]
         top_area = area_counts.most_common(1)[0][0] if area_counts else None
         emirate = (best.get("emirates") or [None])[0]
+        conv = self.db.one("SELECT state FROM conversations WHERE lead_id=? AND channel='whatsapp'", (lead_id,))
+        answers = json.loads(conv["state"]).get("answers", {}) if conv else {}
+        if answers.get("intent") in CONVO_LABEL:                       # the person's own answers outrank text heuristics
+            if not (answers["intent"] == "buy" and best["label"] == "investor"):
+                best["label"] = CONVO_LABEL[answers["intent"]]
+            best["purchase_type"] = "rent" if answers["intent"] == "rent" else (
+                best.get("purchase_type") if best.get("purchase_type") not in (None, "rent") else "ready")
+        if answers.get("budget"):
+            latest["budget_max"] = answers["budget"]
+        if answers.get("timeline") is not None:
+            latest["timeline_days"] = answers["timeline"]
+        if answers.get("area") in AREAS:
+            top_area, emirate = answers["area"], AREAS[answers["area"]][0]
         sla = None
         if tier in SLA_MINUTES and lead["status"] == "new":
             prev = lead["sla_due_at"]

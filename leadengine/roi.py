@@ -23,17 +23,35 @@ def _ratio(num: float, den: float) -> float | None:
     return round(num / den, 2) if den else None
 
 
-def roi_report(db: DB, now: datetime | None = None) -> list[dict]:
+def _norm(name: str) -> str:
+    return " ".join((name or "").strip().lower().split())
+
+
+def roi_report(db: DB, now: datetime | None = None, period: str | None = None) -> list[dict]:
+    """Per-source ROI. `period` ('YYYY-MM') limits both leads (by first-seen month) and spend (by its period label)."""
     now = now or utcnow()
     first_signal = {r["lead_id"]: r["platform"] for r in db.q(
         "SELECT lead_id, platform FROM signals WHERE id IN (SELECT MIN(id) FROM signals GROUP BY lead_id)")}
     contacted = {r["lead_id"]: r["ts"] for r in db.q(
         "SELECT lead_id, MIN(ts) ts FROM activities WHERE kind='status:contacted' GROUP BY lead_id")}
-    spend = {r["source"]: r["total"] for r in db.q("SELECT source, SUM(amount_aed) total FROM spend GROUP BY source")}
+    platforms = set(first_signal.values())
+
+    def canonical(source: str) -> str:
+        s = _norm(source)
+        if s in platforms:
+            return s
+        tails = [p for p in platforms if p.endswith(":" + s)]          # "Bayut" -> "portal:bayut"
+        return tails[0] if len(tails) == 1 else s
+
+    spend: dict[str, float] = {}
+    for r in db.q("SELECT source, period, amount_aed FROM spend"):
+        if period is None or r["period"] == period:
+            key = canonical(r["source"])
+            spend[key] = spend.get(key, 0.0) + r["amount_aed"]
     stats: dict[str, dict] = {s: {"leads": 0, "qualified": 0, "won": 0, "sla_den": 0, "sla_ok": 0, "resp": []} for s in spend}
     for lead in db.q("SELECT id, tier, status, first_seen FROM leads"):
         src = first_signal.get(lead["id"])
-        if src is None:
+        if src is None or (period is not None and not lead["first_seen"].startswith(period)):
             continue
         s = stats.setdefault(src, {"leads": 0, "qualified": 0, "won": 0, "sla_den": 0, "sla_ok": 0, "resp": []})
         s["leads"] += 1

@@ -5,6 +5,7 @@ parse is re-asked once, then skipped. Replies follow the person's language (Engl
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from .nlp.areas import extract_areas
 from .nlp.intent import classify, parse_budget, parse_timeline
@@ -12,7 +13,8 @@ from .nlp.text import detect_language, normalize
 
 STEPS = ("intent", "area", "budget", "timeline", "consent")
 _STOP_WORDS = {"stop", "unsubscribe", "cancel", "optout", "ايقاف", "وقف", "الغاء", "stop all", "stop messages", "stop messaging",
-               "stop please", "please stop", "opt out", "الغاء الاشتراك"}
+               "stop please", "please stop", "opt out", "الغاء الاشتراك", "توقف", "اوقف", "remove", "remove all"}
+_FILLERS = {"please", "pls", "plz", "me", "now", "thanks", "thank", "you", "من", "فضلك", "لو", "سمحت", "الان"}
 _YES = {"yes", "y", "ok", "okay", "sure", "yep", "yeah", "نعم", "ايوه", "ايوا", "تمام", "اوكي", "موافق"}
 _NO = {"no", "n", "nope", "لا", "كلا"}
 _PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
@@ -45,12 +47,13 @@ Q = {
 
 
 def _words(text: str) -> str:
-    return " ".join(_PUNCT.sub(" ", normalize(text)).split())
+    return " ".join(_PUNCT.sub(" ", normalize(unicodedata.normalize("NFKC", text))).split())
 
 
 def is_stop(text: str) -> bool:
-    """Exact opt-out keywords only: 'Can I stop by tomorrow?' must NOT unsubscribe anyone."""
-    return _words(text) in {_words(w) for w in _STOP_WORDS}
+    """Exact opt-out keywords (after dropping polite fillers like 'please'/'من فضلك'): 'Can I stop by tomorrow?' must NOT unsubscribe anyone."""
+    core = " ".join(w for w in _words(text).split() if w not in _FILLERS)
+    return core in {_words(w) for w in _STOP_WORDS}
 
 
 def _intent(text: str) -> str | None:
