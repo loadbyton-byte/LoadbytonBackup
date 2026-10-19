@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .calculators import deal_costs, max_loan, mortgage_payment, rental_yield
 from .capture import MAX_BODY, RateLimiter, handle_capture, origin_allowed, widget_js
 from .config import Settings
 from .connectors import ConnectorRegistry
@@ -59,6 +60,24 @@ class AgentPatch(BaseModel):
     max_open: int | None = None
     areas: list[str] | None = None
     languages: list[str] | None = None
+
+
+class DealCostsIn(BaseModel):
+    price: float
+    loan: float = 0.0
+
+
+class MortgageIn(BaseModel):
+    principal: float
+    annual_rate_pct: float
+    years: int
+
+
+class YieldIn(BaseModel):
+    price: float
+    annual_rent: float
+    service_charge: float = 0.0
+    vacancy_pct: float = 5.0
 
 
 class SpendIn(BaseModel):
@@ -320,6 +339,46 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     @app.get("/radar")
     def radar(days: int = 14, _=Depends(auth)):
         return demand_radar(db, days=days)
+
+    # ---------------------------------------------------------------- calculators
+    def calc(fn, *a, **kw):
+        try:
+            return fn(*a, **kw)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    @app.post("/tools/deal-costs")
+    def tool_deal_costs(p: DealCostsIn, _=Depends(auth)):
+        return calc(deal_costs, p.price, s.rates, loan=p.loan)
+
+    @app.post("/tools/mortgage")
+    def tool_mortgage(p: MortgageIn, _=Depends(auth)):
+        return {"monthly_payment": calc(mortgage_payment, p.principal, p.annual_rate_pct, p.years)}
+
+    @app.post("/tools/yield")
+    def tool_yield(p: YieldIn, _=Depends(auth)):
+        return calc(rental_yield, p.price, p.annual_rent, service_charge=p.service_charge, vacancy_pct=p.vacancy_pct)
+
+    @app.get("/leads/{lead_id}/deal-sheet")
+    def deal_sheet(lead_id: int, ltv_pct: float | None = None, rate_pct: float | None = None, years: int | None = None,
+                   _=Depends(auth)):
+        r = db.one("SELECT * FROM leads WHERE id=?", (lead_id,))
+        if not r:
+            raise HTTPException(404, "lead not found")
+        if r["label"] in ("renter", "landlord") or r["purchase_type"] == "rent":
+            raise HTTPException(422, "deal sheet is for purchase leads")
+        if not r["budget_max"]:
+            raise HTTPException(422, "lead has no stated budget")
+        rt = s.rates
+        price = r["budget_max"]
+        ltv, rate, yrs = ltv_pct if ltv_pct is not None else rt.default_ltv_pct, rate_pct if rate_pct is not None else rt.default_rate_pct, years or rt.default_years
+        loan = calc(max_loan, price, ltv_pct=ltv)
+        costs = calc(deal_costs, price, rt, loan=loan)
+        down = round(price - loan, 2)
+        return {"price": price, "ltv_pct": ltv, "loan": loan, "down_payment": down, "costs": costs,
+                "cash_needed_total": round(down + costs["total_costs"], 2), "rate_pct": rate, "years": yrs,
+                "monthly_payment": calc(mortgage_payment, loan, rate, yrs) if loan > 0 else 0.0,
+                "disclaimer": "Indicative only. Fees, LTV limits and rates change - verify current rules with the DLD and lenders."}
 
     @app.post("/inventory")
     async def inventory(request: Request, _=Depends(auth)):

@@ -9,6 +9,21 @@ def _env(name: str, default: str = "") -> str:
 
 
 @dataclass
+class Rates:
+    """Market/legal rates used by the calculators. Defaults are indicative starting points, NOT legal advice:
+    verify current DLD fees, agency commission, mortgage rules and LTV limits before quoting a client."""
+    dld_pct: float = 4.0                # Dubai Land Department transfer fee, % of price (verify current rules)
+    dld_admin_fee: float = 580.0        # fixed registration/admin fee, AED (verify current rules)
+    agency_pct: float = 2.0             # buyer-side agency commission, % of price (negotiable; verify)
+    vat_pct: float = 5.0                # VAT on the commission (verify)
+    mortgage_reg_pct: float = 0.25      # mortgage registration, % of loan (verify)
+    mortgage_reg_fee: float = 290.0     # fixed mortgage registration fee, AED (verify)
+    default_ltv_pct: float = 80.0       # typical max loan-to-value for a resident first purchase (varies by price/buyer; verify)
+    default_rate_pct: float = 4.5       # illustrative interest rate (verify with lenders)
+    default_years: int = 25
+
+
+@dataclass
 class Settings:
     db_path: str = field(default_factory=lambda: _env("LEADENGINE_DB", "leadengine.db"))
     api_key: str = field(default_factory=lambda: _env("LEADENGINE_API_KEY"))
@@ -23,6 +38,7 @@ class Settings:
     contact_hour_start: int = field(default_factory=lambda: int(_env("CONTACT_HOUR_START", "9")))
     contact_hour_end: int = field(default_factory=lambda: int(_env("CONTACT_HOUR_END", "20")))
     dnc_file: str = field(default_factory=lambda: _env("DNC_FILE"))  # one E.164 number per line (TDRA DNCR export)
+    rates: Rates = field(default_factory=Rates)
     # Golden-visa property threshold in AED — configuration, not law: verify current rules before relying on it.
     golden_visa_min_aed: float = field(default_factory=lambda: float(_env("GOLDEN_VISA_MIN_AED", "2000000")))
     # Public lead capture: comma-separated browser origins allowed to POST /capture (empty = same host only).
