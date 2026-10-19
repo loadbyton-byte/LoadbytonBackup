@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .config import Settings
@@ -54,8 +55,9 @@ def create_app(settings: Settings | None = None, db: DB | None = None) -> FastAP
     for c in (RedditConnector(s), ApifyConnector(s), meta, forms):
         reg.register(c)
 
-    app = FastAPI(title="UAE Real Estate Lead Engine", version="1.0.0")
+    app = FastAPI(title="DigitalBurj Leads", version="1.0.0")
     app.state.pipeline, app.state.db, app.state.settings = pipe, db, s
+    app.mount("/static", StaticFiles(directory=DASH.parent), name="static")
 
     def auth(x_api_key: str = Header(default="")) -> str:
         if s.api_key and x_api_key != s.api_key:
