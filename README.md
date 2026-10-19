@@ -86,6 +86,20 @@ OpenAPI docs: `/docs`. Embed the widget:
 <script src="https://leads.your-agency.ae/widget.js" data-source="landing-marina" defer></script>
 ```
 
+## Deploy (Docker)
+
+```bash
+docker build -t digitalburj-leads .
+# production: persistent volume + secrets from your env file
+docker run -d --name digitalburj-leads -p 8000:8000 -v digitalburj-data:/data --env-file .env digitalburj-leads
+# throwaway demo with synthetic data (no secrets):
+docker run --rm -p 8000:8000 digitalburj-leads python -m leadengine.cli serve --demo --host 0.0.0.0
+```
+
+The image runs as an unprivileged user, stores SQLite in the `/data` volume and has a `/health` healthcheck. **Without `LEADENGINE_API_KEY`
+every endpoint is open** (including `/demo/seed` and lead data) — acceptable for a local or throwaway demo, never for real leads. Put it behind
+HTTPS (reverse proxy or your host's TLS); webhooks and the capture widget need a public HTTPS URL. SQLite means one running instance.
+
 ## Main endpoints
 
 `/ingest/{signals,csv,portal-email}` · `/connectors/{name}/run` · `/webhooks/{meta,whatsapp,form/{platform}}` · `GET /leads` · `GET /leads/{id}` ·
