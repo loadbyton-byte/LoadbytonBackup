@@ -18,6 +18,7 @@ from .models import Signal
 from .outreach import draft
 from .pipeline import Pipeline
 from .radar import demand_radar
+from .roi import record_spend, roi_report
 
 DASH = Path(__file__).resolve().parent.parent / "dashboard" / "index.html"
 
@@ -55,6 +56,13 @@ class AgentPatch(BaseModel):
     max_open: int | None = None
     areas: list[str] | None = None
     languages: list[str] | None = None
+
+
+class SpendIn(BaseModel):
+    source: str
+    campaign: str | None = None
+    period: str
+    amount_aed: float
 
 
 class PortalEmailIn(BaseModel):
@@ -262,6 +270,17 @@ def create_app(settings: Settings | None = None, db: DB | None = None) -> FastAP
     @app.get("/radar")
     def radar(days: int = 14, _=Depends(auth)):
         return demand_radar(db, days=days)
+
+    @app.post("/spend")
+    def spend(p: SpendIn, _=Depends(auth)):
+        try:
+            return {"id": record_spend(db, p.source, p.campaign, p.period, p.amount_aed)}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/roi")
+    def roi(_=Depends(auth)):
+        return roi_report(db)
 
     @app.get("/stats")
     def stats(_=Depends(auth)):
