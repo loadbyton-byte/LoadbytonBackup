@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,79 +12,328 @@
 <body>
 <header>
   <div class="brand"><img src="/static/brand/wordmark-clear.png" alt="DigitalBurj" width="140" height="27"><span>Leads</span></div>
-  <input id="key" type="password" placeholder="API key (if set)" style="width:150px">
-  <select id="tier"><option value="">All tiers</option><option>HOT</option><option>WARM</option><option>NURTURE</option></select>
-  <select id="label"><option value="">All intents</option><option>buyer</option><option>investor</option><option>renter</option><option>seller</option><option>landlord</option><option>seeker</option></select>
-  <button id="refresh" class="primary">Refresh</button>
-  <button id="seed">Load demo data</button>
+  <div class="controls">
+    <input id="key" type="password" data-i18n-ph="apikey" aria-label="API key" style="width:140px">
+    <button id="lang" type="button" aria-label="Language">العربية</button>
+    <button id="refresh" class="primary" type="button" data-i18n="refresh">Refresh</button>
+    <button id="seed" type="button" data-i18n="demo">Load demo data</button>
+  </div>
 </header>
-<main>
+<nav class="tabs" role="tablist">
+  <button role="tab" data-tab="leads" aria-selected="true" data-i18n="tab_leads">Leads</button>
+  <button role="tab" data-tab="agents" aria-selected="false" data-i18n="tab_agents">Agents &amp; queue</button>
+  <button role="tab" data-tab="tasks" aria-selected="false" data-i18n="tab_tasks">Today's tasks</button>
+  <button role="tab" data-tab="roi" aria-selected="false" data-i18n="tab_roi">ROI by source</button>
+  <button role="tab" data-tab="inventory" aria-selected="false" data-i18n="tab_inventory">Inventory</button>
+</nav>
+
+<main id="tab-leads" class="panel">
   <section>
+    <div class="toolbar">
+      <select id="tier" aria-label="Tier"><option value="">All tiers</option><option>HOT</option><option>WARM</option><option>NURTURE</option></select>
+      <select id="label" aria-label="Intent"><option value="">All intents</option><option>buyer</option><option>investor</option><option>renter</option><option>seller</option><option>landlord</option><option>seeker</option></select>
+    </div>
     <div class="tiles" id="tiles"></div>
-    <div class="card"><table><thead><tr><th>Score</th><th>Lead</th><th>Looking for</th><th>Sources</th><th>Consent</th></tr></thead><tbody id="rows"></tbody></table>
-      <p id="empty" class="mute" hidden>No leads yet — click “Load demo data”, or connect a source.</p></div>
+    <div class="card tablewrap"><table><thead><tr>
+      <th data-i18n="h_score">Score</th><th data-i18n="h_lead">Lead</th><th data-i18n="h_looking">Looking for</th><th data-i18n="h_sources">Sources</th><th data-i18n="h_consent">Consent</th>
+    </tr></thead><tbody id="rows"></tbody></table>
+    <p id="empty" class="empty" hidden data-i18n="empty_leads">No leads yet — load demo data or connect a source.</p></div>
   </section>
   <aside>
-    <div class="card"><h2>📡 Demand Radar <span class="mute">(14-day, de-identified)</span></h2><div id="radar"></div></div>
-    <div class="card" style="margin-top:16px"><h2>🛡️ Compliance posture</h2>
-      <p class="mute" style="margin:0">Public posts never unlock DM/phone/WhatsApp. Opt-outs are hashed into a suppression list. Every draft needs human approval and carries BRN + permit.</p></div>
+    <div class="card"><h2><span data-i18n="radar">Demand Radar</span> <span class="mute" data-i18n="radar_note">(14-day, de-identified)</span></h2><div id="radar"></div></div>
+    <div class="card" style="margin-top:16px"><h2 data-i18n="compliance">Compliance posture</h2>
+      <p class="mute" style="margin:0" data-i18n="compliance_text"></p></div>
   </aside>
 </main>
-<dialog id="dlg"></dialog>
-<script>
-const $ = s => document.querySelector(s);
-const hdr = () => ({'x-api-key': $('#key').value, 'content-type':'application/json'});
-const api = async (p, o={}) => { const r = await fetch(p, {headers: hdr(), ...o}); if(!r.ok) throw new Error(r.status+' '+await r.text()); return r.json(); };
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const money = n => n ? 'AED ' + (n >= 1e6 ? (n/1e6).toFixed(n%1e6?1:0)+'M' : Math.round(n/1e3)+'K') : '—';
-try { $('#key').value = localStorage.getItem('le_key') || '' } catch(e) {}
 
-async function load(){
-  try { localStorage.setItem('le_key', $('#key').value) } catch(e) {}
-  const q = new URLSearchParams(); if($('#tier').value) q.set('tier',$('#tier').value); if($('#label').value) q.set('label',$('#label').value);
+<main id="tab-agents" class="panel" hidden style="display:block"><div class="stack">
+  <div class="card"><div class="toolbar"><h2 style="margin:0;flex:1" data-i18n="tab_agents">Agents &amp; queue</h2>
+    <button id="escalate" class="primary small" type="button" data-i18n="escalate">Run SLA escalation</button><span id="escalate-out" class="mute"></span></div>
+    <div class="tablewrap"><table><thead><tr><th data-i18n="h_agent">Agent</th><th data-i18n="h_langs">Languages</th><th data-i18n="h_areas">Areas</th><th data-i18n="h_weight">Weight</th><th data-i18n="h_open">Open / max</th><th></th></tr></thead><tbody id="agent-rows"></tbody></table></div>
+    <form id="agent-form" class="inline">
+      <label><span data-i18n="h_agent">Agent</span><input name="name" required maxlength="80"></label>
+      <label><span data-i18n="h_langs">Languages</span><select name="languages"><option value="en">English</option><option value="en,ar">English + العربية</option><option value="ar">العربية</option></select></label>
+      <label><span data-i18n="h_areas">Areas</span><input name="areas" placeholder="Dubai Marina, JVC"></label>
+      <label><span data-i18n="h_weight">Weight</span><input name="weight" type="number" min="1" value="1"></label>
+      <label><span data-i18n="max_open">Max open</span><input name="max_open" type="number" min="1" value="25"></label>
+      <button class="primary" type="submit" data-i18n="add_agent">Add agent</button></form></div>
+  <div class="card"><h2 data-i18n="overdue">Overdue first responses</h2><div class="tablewrap"><table><tbody id="overdue-rows"></tbody></table></div></div>
+</div></main>
+
+<main id="tab-tasks" class="panel" hidden style="display:block"><div class="card">
+  <div class="toolbar"><select id="task-agent" aria-label="Agent"></select></div>
+  <div class="tablewrap"><table><thead><tr><th data-i18n="h_lead">Lead</th><th data-i18n="h_action">Action</th><th data-i18n="h_channel">Channel</th><th data-i18n="h_due">Due</th><th data-i18n="h_reason">Why</th></tr></thead><tbody id="task-rows"></tbody></table></div>
+  <p id="task-empty" class="empty" hidden data-i18n="empty_tasks">Nothing due today.</p></div></main>
+
+<main id="tab-roi" class="panel" hidden style="display:block"><div class="card">
+  <div class="tablewrap"><table><thead><tr><th data-i18n="h_source">Source</th><th data-i18n="h_leads">Leads</th><th data-i18n="h_qualified">Qualified</th><th data-i18n="h_won">Won</th><th data-i18n="h_sla">Within SLA</th><th data-i18n="h_resp">Median reply (min)</th><th data-i18n="h_spend">Spend (AED)</th><th data-i18n="h_cpq">Cost / qualified</th><th data-i18n="h_cpw">Cost / won</th></tr></thead><tbody id="roi-rows"></tbody></table></div>
+  <form id="spend-form" class="inline">
+    <label><span data-i18n="h_source">Source</span><input name="source" required placeholder="reddit"></label>
+    <label><span>Campaign</span><input name="campaign"></label>
+    <label><span>Period</span><input name="period" required placeholder="2026-10"></label>
+    <label><span data-i18n="h_spend">Spend (AED)</span><input name="amount_aed" type="number" min="0" step="0.01" required></label>
+    <button class="primary" type="submit" data-i18n="add_spend">Record spend</button></form>
+  <p class="mute" data-i18n="roi_note"></p></div></main>
+
+<main id="tab-inventory" class="panel" hidden style="display:block"><div class="stack"><div class="card">
+  <div class="tablewrap"><table><thead><tr><th data-i18n="h_project">Project</th><th data-i18n="h_area">Area</th><th data-i18n="h_price">Price range (AED)</th><th data-i18n="h_beds">Beds</th><th data-i18n="h_handover">Handover</th></tr></thead><tbody id="inv-rows"></tbody></table></div>
+  <p id="inv-empty" class="empty" hidden data-i18n="empty_inv">No projects yet — paste your CSV below.</p></div>
+  <div class="card"><h2 data-i18n="import_csv">Import projects (CSV)</h2>
+    <textarea id="inv-csv" spellcheck="false" aria-label="CSV">name,developer,area,emirate,min_price,max_price,bedrooms,handover,payment_plan</textarea>
+    <div class="toolbar" style="margin-top:8px"><button id="inv-import" class="primary" type="button" data-i18n="import">Import</button><span id="inv-out" class="mute"></span></div></div>
+</div></main>
+
+<dialog id="dlg" aria-label="Lead"></dialog>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => n ? 'AED ' + (n >= 1e6 ? (n/1e6).toFixed(n % 1e6 ? 1 : 0) + 'M' : Math.round(n/1e3) + 'K') : '—';
+const when = iso => iso ? new Date(iso).toLocaleString(LANG === 'ar' ? 'ar-AE' : 'en-GB', {dateStyle: 'medium', timeStyle: 'short'}) : '—';
+const num = v => (v === null || v === undefined) ? '—' : v;
+
+let LANG = 'en', TAB = 'leads';
+try { LANG = localStorage.getItem('le_lang') === 'ar' ? 'ar' : 'en'; $('#key').value = localStorage.getItem('le_key') || ''; } catch (e) {}
+
+const T = {
+  en: {apikey:'API key (if set)', refresh:'Refresh', demo:'Load demo data', tab_leads:'Leads', tab_agents:'Agents & queue', tab_tasks:"Today's tasks", tab_roi:'ROI by source', tab_inventory:'Inventory',
+    h_score:'Score', h_lead:'Lead', h_looking:'Looking for', h_sources:'Sources', h_consent:'Consent', empty_leads:'No leads yet — load demo data or connect a source.',
+    radar:'Demand Radar', radar_note:'(14-day, de-identified)', compliance:'Compliance posture',
+    compliance_text:'Public posts never unlock DM/phone/WhatsApp. Opt-outs are hashed into a suppression list. Every draft needs human approval and carries BRN + permit.',
+    escalate:'Run SLA escalation', h_agent:'Agent', h_langs:'Languages', h_areas:'Areas', h_weight:'Weight', h_open:'Open / max', max_open:'Max open', add_agent:'Add agent', overdue:'Overdue first responses',
+    h_action:'Action', h_channel:'Channel', h_due:'Due', h_reason:'Why', empty_tasks:'Nothing due today.', all_agents:'All agents',
+    h_source:'Source', h_leads:'Leads', h_qualified:'Qualified', h_won:'Won', h_sla:'Within SLA', h_resp:'Median reply (min)', h_spend:'Spend (AED)', h_cpq:'Cost / qualified', h_cpw:'Cost / won', add_spend:'Record spend',
+    roi_note:'Ratios show — when there is no spend, no leads or no wins to divide by.', h_project:'Project', h_area:'Area', h_price:'Price range (AED)', h_beds:'Beds', h_handover:'Handover',
+    empty_inv:'No projects yet — paste your CSV below.', import_csv:'Import projects (CSV)', import:'Import',
+    a_assign:'Assign owner', a_call:'Call now', a_first_response:'First response', a_send_matches:'Send matching projects', a_follow_up:'Follow up', a_book_valuation_visit:'Book valuation visit', a_reengage:'Re-engage',
+    deactivate:'Pause', activate:'Activate', why:'Why this score', evidence:'Evidence', nba:'Next best actions', matches:'Matching projects', dealsheet:'Deal sheet', calc:'Calculate',
+    cash_needed:'Cash needed (incl. down payment)', down:'Down payment', loan:'Loan', monthly:'Monthly payment', costs:'Transaction costs', viewing:'Schedule a viewing', save:'Save', start:'Start (UAE time)',
+    duration:'Minutes', location:'Location', drafts:'Draft outreach', needs_approval:'(human approval required)', close:'Close', allowed:'Allowed', blocked:'Blocked', none:'None', status:'Status', reply_by:'reply by',
+    escalated:'reassigned', flagged:'flagged', no_matches:'No matching projects.', no_actions:'No actions due.', saved:'Saved', imported:'Imported', skipped:'skipped'},
+  ar: {apikey:'مفتاح API (إن وجد)', refresh:'تحديث', demo:'تحميل بيانات تجريبية', tab_leads:'العملاء المحتملون', tab_agents:'الوكلاء والطابور', tab_tasks:'مهام اليوم', tab_roi:'العائد حسب المصدر', tab_inventory:'المخزون',
+    h_score:'التقييم', h_lead:'العميل', h_looking:'يبحث عن', h_sources:'المصادر', h_consent:'الموافقة', empty_leads:'لا يوجد عملاء بعد — حمّل بيانات تجريبية أو اربط مصدراً.',
+    radar:'رادار الطلب', radar_note:'(14 يوماً، بدون هوية)', compliance:'الالتزام والخصوصية',
+    compliance_text:'المنشورات العامة لا تفتح الرسائل المباشرة أو الهاتف أو واتساب. طلبات الإيقاف تُخزَّن مشفّرة. كل مسودة تحتاج موافقة بشرية وتحمل رقم BRN والتصريح.',
+    escalate:'تشغيل التصعيد', h_agent:'الوكيل', h_langs:'اللغات', h_areas:'المناطق', h_weight:'الوزن', h_open:'مفتوح / الحد', max_open:'الحد الأقصى', add_agent:'إضافة وكيل', overdue:'ردود أولى متأخرة',
+    h_action:'الإجراء', h_channel:'القناة', h_due:'الموعد', h_reason:'السبب', empty_tasks:'لا مهام مستحقة اليوم.', all_agents:'كل الوكلاء',
+    h_source:'المصدر', h_leads:'العملاء', h_qualified:'مؤهلون', h_won:'مغلقة', h_sla:'ضمن المهلة', h_resp:'متوسط الرد (دقيقة)', h_spend:'الإنفاق (درهم)', h_cpq:'التكلفة / مؤهل', h_cpw:'التكلفة / صفقة', add_spend:'تسجيل إنفاق',
+    roi_note:'تظهر — عند عدم وجود إنفاق أو عملاء أو صفقات للقسمة عليها.', h_project:'المشروع', h_area:'المنطقة', h_price:'نطاق السعر (درهم)', h_beds:'الغرف', h_handover:'التسليم',
+    empty_inv:'لا مشاريع بعد — الصق ملف CSV أدناه.', import_csv:'استيراد المشاريع (CSV)', import:'استيراد',
+    a_assign:'تعيين مسؤول', a_call:'اتصل الآن', a_first_response:'الرد الأول', a_send_matches:'إرسال مشاريع مناسبة', a_follow_up:'متابعة', a_book_valuation_visit:'حجز زيارة تقييم', a_reengage:'إعادة التواصل',
+    deactivate:'إيقاف مؤقت', activate:'تفعيل', why:'سبب التقييم', evidence:'الأدلة', nba:'أفضل الإجراءات التالية', matches:'مشاريع مناسبة', dealsheet:'ورقة الصفقة', calc:'احسب',
+    cash_needed:'النقد المطلوب (شامل الدفعة الأولى)', down:'الدفعة الأولى', loan:'القرض', monthly:'القسط الشهري', costs:'تكاليف المعاملة', viewing:'جدولة معاينة', save:'حفظ', start:'البداية (توقيت الإمارات)',
+    duration:'دقائق', location:'الموقع', drafts:'مسودات التواصل', needs_approval:'(تتطلب موافقة بشرية)', close:'إغلاق', allowed:'مسموح', blocked:'محظور', none:'لا شيء', status:'الحالة', reply_by:'الرد قبل',
+    escalated:'أعيد تعيينها', flagged:'تنبيه للمدير', no_matches:'لا مشاريع مناسبة.', no_actions:'لا إجراءات مستحقة.', saved:'تم الحفظ', imported:'تم استيراد', skipped:'تم تخطي'},
+};
+const t = k => (T[LANG][k] ?? T.en[k] ?? k);
+
+const hdr = () => ({'x-api-key': $('#key').value, 'content-type': 'application/json'});
+async function api(path, opts = {}) {
+  const r = await fetch(path, {...opts, headers: {...hdr(), ...(opts.headers || {})}});
+  const text = await r.text();
+  let data; try { data = JSON.parse(text); } catch (e) { data = text; }
+  if (!r.ok) throw new Error(typeof data === 'object' && data.detail ? (data.detail.map ? data.detail.map(d => d.msg).join('; ') : data.detail) : `${r.status} ${text}`.slice(0, 200));
+  return data;
+}
+const post = (p, body) => api(p, {method: 'POST', body: JSON.stringify(body ?? {})});
+const err = e => `<span class="no">${esc(e.message)}</span>`;
+const pill = tier => `<span class="pill ${esc(tier)}">${esc(tier)}</span>`;
+
+function applyLang() {
+  document.documentElement.lang = LANG; document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
+  document.querySelectorAll('[data-i18n]').forEach(e => { e.textContent = t(e.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(e => { e.placeholder = t(e.dataset.i18nPh); });
+  $('#lang').textContent = LANG === 'ar' ? 'English' : 'العربية';
+  try { localStorage.setItem('le_lang', LANG); } catch (e) {}
+}
+
+/* ---------------------------------------------------------------- tabs */
+const loaders = {leads: loadLeads, agents: loadAgents, tasks: loadTasks, roi: loadRoi, inventory: loadInventory};
+function showTab(name) {
+  TAB = name;
+  document.querySelectorAll('nav.tabs [data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => { p.hidden = p.id !== 'tab-' + name; });
+  return loaders[name]();
+}
+document.querySelector('nav.tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) showTab(b.dataset.tab); });
+
+/* ---------------------------------------------------------------- leads */
+async function loadLeads() {
+  try { localStorage.setItem('le_key', $('#key').value); } catch (e) {}
+  const q = new URLSearchParams(); if ($('#tier').value) q.set('tier', $('#tier').value); if ($('#label').value) q.set('label', $('#label').value);
   try {
-    const [leads, stats, radar] = await Promise.all([api('/leads?'+q), api('/stats'), api('/radar')]);
-    const t = stats.tiers;
-    $('#tiles').innerHTML = [['HOT',t.HOT||0],['WARM',t.WARM||0],['NURTURE',t.NURTURE||0],['Noise filtered',(stats.counters.discarded_noise||0)+(stats.counters.discarded_agent_spam||0)]]
-      .map(([k,v])=>`<div class="tile"><b>${v}</b><span>${k}</span></div>`).join('');
+    const [leads, stats, radar] = await Promise.all([api('/leads?' + q), api('/stats'), api('/radar')]);
+    const c = stats.counters, tr = stats.tiers;
+    $('#tiles').innerHTML = [['HOT', tr.HOT || 0], ['WARM', tr.WARM || 0], ['NURTURE', tr.NURTURE || 0], ['Noise', (c.discarded_noise || 0) + (c.discarded_agent_spam || 0)]]
+      .map(([k, v]) => `<div class="tile"><b>${v}</b><span>${esc(k)}</span></div>`).join('');
     $('#empty').hidden = leads.length > 0;
-    $('#rows').innerHTML = leads.map(l => `<tr class="row" data-id="${l.id}">
-      <td><span class="pill ${l.tier}">${l.tier}</span> <span class="score">${l.score}</span></td>
-      <td><b>${esc(l.display_name || 'Lead #'+l.id)}</b><br><span class="mute">${esc(l.label)} · ${esc(l.stage)}${l.profile?.wants_agent?' · asked for an agent':''}</span></td>
-      <td>${esc(l.primary_area || l.emirate || '—')}<br><span class="mute">${money(l.budget_max)}${l.bedrooms!=null?' · '+l.bedrooms+'BR':''}${l.timeline_days?' · ≤'+l.timeline_days+'d':''}</span></td>
-      <td>${(l.platforms||[]).map(p=>`<span class="tag">${esc(p)}</span>`).join('')}</td>
-      <td class="${l.consent_status==='opted_in'?'ok':'mute'}">${esc(l.consent_status)}</td></tr>`).join('');
-    const max = Math.max(1, ...radar.map(r=>r.demand_index));
-    $('#radar').innerHTML = radar.slice(0,10).map(r => `<div class="heat"><div style="flex:1"><b>${esc(r.area)}</b>
-      <div class="bar"><i style="width:${100*r.demand_index/max}%"></i></div></div>
-      <div style="text-align:right"><span class="${r.trend==='heating'?'up':r.trend==='cooling'?'down':'mute'}">${r.trend==='new'?'new':r.growth_pct!=null?(r.growth_pct>0?'▲':'▼')+Math.abs(r.growth_pct)+'%':''}</span>
-      <br><span class="mute">${r.signals} sig · ${r.buy_share_pct}% buy</span></div></div>`).join('') || '<span class="mute">No data yet</span>';
-  } catch(e){ $('#rows').innerHTML = `<tr><td colspan="5" class="no">${esc(e.message)}</td></tr>`; }
+    $('#rows').innerHTML = leads.map(l => `<tr class="row" data-id="${Number(l.id)}">
+      <td><span class="pill ${esc(l.tier)}">${esc(l.tier)}</span> <span class="score">${Number(l.score)}</span></td>
+      <td><b>${esc(l.display_name || 'Lead #' + l.id)}</b><br><span class="mute">${esc(l.label)} · ${esc(l.stage)}${l.profile?.wants_agent ? ' ★' : ''}</span></td>
+      <td>${esc(l.primary_area || l.emirate || '—')}<br><span class="mute">${money(l.budget_max)}${l.bedrooms != null ? ' · ' + Number(l.bedrooms) + 'BR' : ''}${l.timeline_days ? ' · ≤' + Number(l.timeline_days) + 'd' : ''}</span></td>
+      <td>${(l.platforms || []).map(p => `<span class="tag">${esc(p)}</span>`).join('')}</td>
+      <td class="${l.consent_status === 'opted_in' ? 'ok' : 'mute'}">${esc(l.consent_status)}</td></tr>`).join('');
+    const max = Math.max(1, ...radar.map(r => r.demand_index));
+    $('#radar').innerHTML = radar.slice(0, 10).map(r => `<div class="heat"><div style="flex:1"><b>${esc(r.area)}</b><div class="bar"><i style="width:${Math.round(100 * r.demand_index / max)}%"></i></div></div>
+      <div style="text-align:end"><span class="${r.trend === 'heating' ? 'up' : r.trend === 'cooling' ? 'down' : 'mute'}">${r.trend === 'new' ? 'new' : r.growth_pct != null ? (r.growth_pct > 0 ? '▲' : '▼') + Math.abs(r.growth_pct) + '%' : ''}</span>
+      <br><bdi class="mute">${Number(r.signals)} · ${Number(r.buy_share_pct)}% buy</bdi></div></div>`).join('') || '<span class="mute">—</span>';
+  } catch (e) { $('#rows').innerHTML = `<tr><td colspan="5">${err(e)}</td></tr>`; }
 }
-async function open(id){
-  const l = await api('/leads/'+id), bd = l.breakdown || {};
-  const bars = ['intent','stage','specificity','urgency','financial_readiness','source_quality','contactability','asked_for_agent'].map(k =>
-    `<div class="bd"><span class="mute">${k.replace(/_/g,' ')}</span><div class="bar"><i style="width:${Math.min(100,(bd[k]||0)*3.4)}%"></i></div><span>${bd[k]??0}</span></div>`).join('');
-  const sigs = (l.signals||[]).map(s=>`<pre class="${/[؀-ۿ]/.test(s.text)?'ar':''}"><b>${esc(s.platform)}</b> · ${esc(s.source_type)} · score ${s.score}\n${esc(s.text)}${s.url?`\n<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">source</a>`:''}</pre>`).join('');
-  $('#dlg').innerHTML = `<h2>${esc(l.display_name || 'Lead #'+l.id)} <span class="pill ${l.tier}">${l.tier} ${l.score}</span></h2>
-    <p class="mute">${esc(l.label)} · ${esc(l.stage)} · ${esc(l.primary_area||'')} · ${money(l.budget_max)} · consent: <b>${esc(l.consent_status)}</b>${l.sla_due_at?' · reply by '+new Date(l.sla_due_at).toLocaleString():''}</p>
-    <h2>Why this score</h2>${bars}<p class="mute">recency ×${bd.recency_multiplier} · cross-platform +${bd.cross_platform_bonus||0} ${(bd.flags||[]).map(f=>'· ⚠ '+esc(f)).join(' ')}</p>
-    <h2>Evidence</h2>${sigs}
-    <h2>Draft outreach <span class="mute">(human approval required)</span></h2>
-    ${['public_reply','whatsapp','call','email'].map(c=>`<button data-ch="${c}" data-id="${l.id}">${c}</button>`).join(' ')}
-    <div id="draft"></div><p style="text-align:right"><button id="close">Close</button></p>`;
-  $('#dlg').showModal();
-  $('#close').onclick = () => $('#dlg').close();
-  $('#dlg').querySelectorAll('[data-ch]').forEach(b => b.onclick = async () => {
-    const d = await api(`/leads/${b.dataset.id}/outreach?channel=${b.dataset.ch}`, {method:'POST'});
-    $('#draft').innerHTML = `<p class="${d.compliance.allowed?'ok':'no'}">${d.compliance.allowed?'✔ Allowed':'✖ Blocked'} — ${esc(d.compliance.reason)}</p>
-      <pre class="${d.language==='ar'?'ar':''}">${esc(d.body)}</pre>${d.notes.map(n=>`<div class="mute">• ${esc(n)}</div>`).join('')}`;
-  });
+$('#rows').addEventListener('click', e => { const tr = e.target.closest('tr.row'); if (tr) openLead(Number(tr.dataset.id)); });
+['tier', 'label'].forEach(id => $('#' + id).addEventListener('change', loadLeads));
+
+/* ---------------------------------------------------------------- agents */
+async function loadAgents() {
+  try {
+    const [agents, overdue] = await Promise.all([api('/agents'), api('/leads?overdue=true')]);
+    $('#agent-rows').innerHTML = agents.map(a => `<tr><td><b>${esc(a.name)}</b></td><td>${esc(a.languages.join(', '))}</td><td>${esc(a.areas.join(', ') || '—')}</td>
+      <td>${Number(a.weight)}</td><td>${Number(a.open_leads)} / ${Number(a.max_open)}</td>
+      <td><button class="small" data-agent="${Number(a.id)}" data-active="${a.active ? 0 : 1}">${t(a.active ? 'deactivate' : 'activate')}</button></td></tr>`).join('');
+    $('#overdue-rows').innerHTML = overdue.map(l => `<tr class="row" data-id="${Number(l.id)}"><td>${pill(l.tier)} ${Number(l.score)}</td><td><b>${esc(l.display_name || 'Lead #' + l.id)}</b></td>
+      <td>${esc(l.primary_area || '—')}</td><td class="mute">${t('reply_by')} ${esc(when(l.sla_due_at))}</td><td>${l.assigned_agent_id ? '#' + Number(l.assigned_agent_id) : '—'}</td></tr>`).join('')
+      || `<tr><td class="mute">${t('none')}</td></tr>`;
+  } catch (e) { $('#agent-rows').innerHTML = `<tr><td colspan="6">${err(e)}</td></tr>`; }
 }
-$('#rows').addEventListener('click', e => { const tr = e.target.closest('tr.row'); if(tr) open(tr.dataset.id); });
-$('#refresh').onclick = load; $('#tier').onchange = load; $('#label').onchange = load;
-$('#seed').onclick = async () => { try { await api('/demo/seed', {method:'POST'}); } catch(e){ alert(e.message) } load(); };
-load();
+$('#agent-rows').addEventListener('click', async e => {
+  const b = e.target.closest('[data-agent]'); if (!b) return;
+  try { await api('/agents/' + Number(b.dataset.agent), {method: 'PATCH', body: JSON.stringify({active: b.dataset.active === '1'})}); } catch (x) { alert(x.message); }
+  loadAgents();
+});
+$('#overdue-rows').addEventListener('click', e => { const tr = e.target.closest('tr.row'); if (tr) openLead(Number(tr.dataset.id)); });
+$('#agent-form').addEventListener('submit', async e => {
+  e.preventDefault(); const f = new FormData(e.target);
+  try {
+    await post('/agents', {name: f.get('name'), languages: f.get('languages').split(','), weight: Number(f.get('weight')) || 1, max_open: Number(f.get('max_open')) || 25,
+      areas: String(f.get('areas')).split(',').map(s => s.trim()).filter(Boolean)});
+    e.target.reset();
+  } catch (x) { alert(x.message); }
+  loadAgents();
+});
+$('#escalate').onclick = async () => {
+  try { const r = await post('/maintenance/escalate'); $('#escalate-out').textContent = `${r.reassigned} ${t('escalated')} · ${r.flagged} ${t('flagged')}`; } catch (x) { $('#escalate-out').textContent = x.message; }
+  loadAgents();
+};
+
+/* ---------------------------------------------------------------- tasks */
+async function loadTasks() {
+  try {
+    const sel = $('#task-agent'), keep = sel.value;
+    const agents = await api('/agents');
+    sel.innerHTML = `<option value="">${esc(t('all_agents'))}</option>` + agents.map(a => `<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('');
+    sel.value = keep;
+    const tasks = await api('/tasks/today' + (sel.value ? '?agent_id=' + Number(sel.value) : ''));
+    $('#task-empty').hidden = tasks.length > 0;
+    $('#task-rows').innerHTML = tasks.map(k => `<tr class="row" data-id="${Number(k.lead_id)}">
+      <td>${pill(k.tier)} <b>${esc(k.display_name || 'Lead #' + k.lead_id)}</b></td><td>${esc(t('a_' + k.action))}</td>
+      <td>${k.channel ? `<span class="chip ${k.allowed ? 'ok' : 'no'}" title="${esc(k.compliance_reason)}">${esc(k.channel)} · ${t(k.allowed ? 'allowed' : 'blocked')}</span>` : '—'}</td>
+      <td>${esc(when(k.due))}</td><td class="mute">${esc(k.reason)}</td></tr>`).join('');
+  } catch (e) { $('#task-rows').innerHTML = `<tr><td colspan="5">${err(e)}</td></tr>`; }
+}
+$('#task-agent').addEventListener('change', loadTasks);
+$('#task-rows').addEventListener('click', e => { const tr = e.target.closest('tr.row'); if (tr) openLead(Number(tr.dataset.id)); });
+
+/* ---------------------------------------------------------------- roi */
+async function loadRoi() {
+  try {
+    const rows = await api('/roi');
+    $('#roi-rows').innerHTML = rows.map(r => `<tr><td><b>${esc(r.source)}</b></td><td>${Number(r.leads)}</td><td>${Number(r.qualified)}</td><td>${Number(r.won)}</td>
+      <td>${r.within_sla_pct == null ? '—' : Number(r.within_sla_pct) + '%'}</td><td>${num(r.median_first_response_min)}</td><td>${Number(r.spend_aed).toLocaleString()}</td>
+      <td>${num(r.cost_per_qualified)}</td><td>${num(r.cost_per_won)}</td></tr>`).join('');
+  } catch (e) { $('#roi-rows').innerHTML = `<tr><td colspan="9">${err(e)}</td></tr>`; }
+}
+$('#spend-form').addEventListener('submit', async e => {
+  e.preventDefault(); const f = new FormData(e.target);
+  try { await post('/spend', {source: f.get('source'), campaign: f.get('campaign') || null, period: f.get('period'), amount_aed: Number(f.get('amount_aed'))}); e.target.reset(); }
+  catch (x) { alert(x.message); }
+  loadRoi();
+});
+
+/* ---------------------------------------------------------------- inventory */
+async function loadInventory() {
+  try {
+    const rows = await api('/inventory');
+    $('#inv-empty').hidden = rows.length > 0;
+    $('#inv-rows').innerHTML = rows.map(p => `<tr><td><b>${esc(p.name)}</b><br><span class="mute">${esc(p.developer || '')}</span></td><td>${esc(p.area || '—')}</td>
+      <td>${Number(p.min_price).toLocaleString()} – ${Number(p.max_price).toLocaleString()}</td><td>${esc(p.bedrooms.map(b => b === 0 ? 'Studio' : b).join(', '))}</td><td>${num(p.handover_year)}</td></tr>`).join('');
+  } catch (e) { $('#inv-rows').innerHTML = `<tr><td colspan="5">${err(e)}</td></tr>`; }
+}
+$('#inv-import').onclick = async () => {
+  try {
+    const r = await api('/inventory', {method: 'POST', body: $('#inv-csv').value, headers: {'content-type': 'text/csv'}});
+    $('#inv-out').textContent = `${t('imported')} ${r.imported} · ${t('skipped')} ${r.skipped.length}` + (r.skipped.length ? ' (' + r.skipped.map(s => `#${s[0]}: ${s[1]}`).join('; ') + ')' : '');
+  } catch (x) { $('#inv-out').textContent = x.message; }
+  loadInventory();
+};
+
+/* ---------------------------------------------------------------- lead dialog */
+async function openLead(id) {
+  const dlg = $('#dlg');
+  let l;
+  try { l = await api('/leads/' + id); } catch (e) { alert(e.message); return; }
+  const bd = l.breakdown || {};
+  const bars = ['intent', 'stage', 'specificity', 'urgency', 'financial_readiness', 'source_quality', 'contactability', 'asked_for_agent'].map(k =>
+    `<div class="bd"><span class="mute">${esc(k.replace(/_/g, ' '))}</span><div class="bar"><i style="width:${Math.min(100, (bd[k] || 0) * 3.4)}%"></i></div><span>${esc(bd[k] ?? 0)}</span></div>`).join('');
+  const sigs = (l.signals || []).map(s => `<pre class="${/[؀-ۿ]/.test(s.text || '') ? 'ar' : ''}"><b>${esc(s.platform)}</b> · ${esc(s.source_type)} · ${Number(s.score)}\n${esc(s.text)}</pre>`).join('');
+  dlg.innerHTML = `<div class="stack">
+    <h2 style="font-size:18px;margin:0">${esc(l.display_name || 'Lead #' + l.id)} ${pill(l.tier)} ${Number(l.score)}</h2>
+    <p class="mute" style="margin:0">${esc(l.label)} · ${esc(l.stage)} · ${esc(l.primary_area || '')} · ${money(l.budget_max)} · ${esc(l.consent_status)}${l.sla_due_at ? ' · ' + t('reply_by') + ' ' + esc(when(l.sla_due_at)) : ''}</p>
+    <div><h2>${t('why')}</h2>${bars}<p class="mute"><bdi>×${esc(bd.recency_multiplier)} · +${Number(bd.cross_platform_bonus || 0)}${bd.repeat_enquiry ? ' · +' + Number(bd.repeat_enquiry) + ' repeat' : ''} ${(bd.flags || []).map(f => '· ⚠ ' + esc(f)).join(' ')}</bdi></p></div>
+    <div><h2>${t('nba')}</h2><div id="nba" class="mute">…</div></div>
+    <div><h2>${t('matches')}</h2><div id="matches" class="mute">…</div></div>
+    <div><h2>${t('dealsheet')}</h2><button class="small" data-act="dealsheet" type="button">${t('calc')}</button><div id="dealsheet"></div></div>
+    <div><h2>${t('viewing')}</h2><form id="viewform" class="inline" data-lead="${Number(l.id)}">
+      <label>${t('start')}<input type="datetime-local" name="start" required></label>
+      <label>${t('duration')}<select name="duration_min"><option>30</option><option>45</option><option>60</option></select></label>
+      <label>${t('location')}<input name="location" maxlength="200"></label>
+      <button class="primary" type="submit">${t('save')}</button></form><div id="viewmsg" class="mute"></div></div>
+    <div><h2>${t('drafts')} <span class="mute">${t('needs_approval')}</span></h2>
+      ${['public_reply', 'whatsapp', 'call', 'email'].map(c => `<button class="small" data-act="draft" data-ch="${c}" type="button">${c}</button>`).join(' ')}<div id="draft"></div></div>
+    <div><h2>${t('evidence')}</h2>${sigs}</div>
+    <p style="text-align:end"><button id="close" type="button">${t('close')}</button></p></div>`;
+  dlg.dataset.id = l.id; dlg.showModal();
+  $('#close').onclick = () => dlg.close();
+  api(`/leads/${id}/next-actions`).then(a => {
+    $('#nba').innerHTML = a.length ? a.map(k => `<div><b>${esc(t('a_' + k.action))}</b> ${k.channel ? `<span class="chip ${k.allowed ? 'ok' : 'no'}" title="${esc(k.compliance_reason)}">${esc(k.channel)}</span>` : ''}
+      <span class="mute">${esc(k.reason)}</span></div>`).join('') : t('no_actions');
+  }).catch(e => { $('#nba').innerHTML = err(e); });
+  api(`/leads/${id}/matches`).then(m => {
+    $('#matches').innerHTML = m.length ? m.map(x => `<div><b>${esc(x.project)}</b> <span class="chip">${Number(x.score)}</span>${x.golden_visa_fit ? '<span class="chip ok">golden visa</span>' : ''}
+      <span class="mute">${esc(x.reasons.join(' · '))}</span></div>`).join('') : t('no_matches');
+  }).catch(e => { $('#matches').innerHTML = err(e); });
+}
+$('#dlg').addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const id = Number($('#dlg').dataset.id);
+  if (b.dataset.act === 'dealsheet') {
+    try {
+      const d = await api(`/leads/${id}/deal-sheet`), n = x => Number(x).toLocaleString();
+      $('#dealsheet').innerHTML = `<dl class="kv"><dt>${t('cash_needed')}</dt><dd><b>AED ${n(d.cash_needed_total)}</b></dd><dt>${t('down')}</dt><dd>AED ${n(d.down_payment)}</dd>
+        <dt>${t('loan')}</dt><dd>AED ${n(d.loan)} (${Number(d.ltv_pct)}%)</dd><dt>${t('monthly')}</dt><dd>AED ${n(d.monthly_payment)}</dd><dt>${t('costs')}</dt><dd>AED ${n(d.costs.total_costs)}</dd></dl>
+        <p class="mute">${esc(d.disclaimer)}</p>`;
+    } catch (x) { $('#dealsheet').innerHTML = err(x); }
+  } else if (b.dataset.act === 'draft') {
+    try {
+      const d = await post(`/leads/${id}/outreach?channel=${encodeURIComponent(b.dataset.ch)}`);
+      $('#draft').innerHTML = `<p class="${d.compliance.allowed ? 'ok' : 'no'}">${d.compliance.allowed ? '✔ ' + t('allowed') : '✖ ' + t('blocked')} — ${esc(d.compliance.reason)}</p>
+        <pre class="${d.language === 'ar' ? 'ar' : ''}">${esc(d.body)}</pre>${d.notes.map(n => `<div class="mute">• ${esc(n)}</div>`).join('')}`;
+    } catch (x) { $('#draft').innerHTML = err(x); }
+  }
+});
+$('#dlg').addEventListener('submit', async e => {
+  if (e.target.id !== 'viewform') return;
+  e.preventDefault(); const f = new FormData(e.target);
+  try {
+    await post(`/leads/${Number(e.target.dataset.lead)}/viewings`, {start: f.get('start'), duration_min: Number(f.get('duration_min')), location: f.get('location')});
+    $('#viewmsg').textContent = t('saved');
+  } catch (x) { $('#viewmsg').innerHTML = err(x); }
+});
+
+/* ---------------------------------------------------------------- boot */
+$('#lang').onclick = () => { LANG = LANG === 'ar' ? 'en' : 'ar'; applyLang(); showTab(TAB); };
+$('#refresh').onclick = () => showTab(TAB);
+$('#seed').onclick = async () => { try { await post('/demo/seed'); } catch (e) { alert(e.message); } showTab(TAB); };
+applyLang();
+showTab('leads');
 </script>
 </body>
 </html>

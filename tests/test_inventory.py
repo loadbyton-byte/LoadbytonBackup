@@ -80,3 +80,17 @@ def test_api_import_and_matches():
     lid = next(l["id"] for l in c.get("/leads").json() if l["primary_area"] == "Dubai South")
     assert c.get(f"/leads/{lid}/matches").json()[0]["project"] == "South Gardens"
     assert c.get("/leads/9999/matches").status_code == 404
+
+
+def test_api_lists_projects():
+    from fastapi.testclient import TestClient
+
+    from leadengine.api import create_app
+    from leadengine.config import Settings
+    from leadengine.db import DB
+
+    c = TestClient(create_app(Settings(db_path=":memory:", api_key=""), DB(":memory:")))
+    assert c.get("/inventory").json() == []
+    c.post("/inventory", content=CSV)
+    rows = c.get("/inventory").json()
+    assert [r["name"] for r in rows] == ["Marina Edge", "South Gardens", "Hills Crest"] and rows[0]["bedrooms"] == [1, 2, 3]

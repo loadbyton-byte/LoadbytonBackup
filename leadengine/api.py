@@ -449,6 +449,15 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     async def inventory(request: Request, _=Depends(auth)):
         return import_projects_csv(db, (await request.body()).decode("utf-8-sig"))
 
+    @app.get("/inventory")
+    def list_inventory(_=Depends(auth)):
+        out = []
+        for r in db.q("SELECT * FROM projects ORDER BY id"):
+            d = dict(r)
+            d["bedrooms"] = json.loads(d["bedrooms"] or "[]")
+            out.append(d)
+        return out
+
     @app.get("/leads/{lead_id}/matches")
     def matches(lead_id: int, _=Depends(auth)):
         r = db.one("SELECT * FROM leads WHERE id=?", (lead_id,))
