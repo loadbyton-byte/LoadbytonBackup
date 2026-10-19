@@ -19,8 +19,9 @@ from .connectors.forms import FormWebhookConnector, MetaLeadAdsConnector, parse_
 from .connectors.reddit import RedditConnector
 from .connectors.whatsapp import handle_inbound, make_sender, parse_inbound
 from .db import DB
-from .models import Signal
+from .models import Signal, utcnow
 from .inventory import import_projects_csv, match as match_projects
+from .nba import next_actions, todays_tasks
 from .outreach import draft
 from .pipeline import Pipeline
 from .radar import demand_radar
@@ -88,6 +89,12 @@ class ViewingIn(BaseModel):
     duration_min: int = 30
     location: str = ""
     agent_id: int | None = None
+
+
+class ActivityIn(BaseModel):
+    kind: str
+    channel: str | None = None
+    note: str | None = None
 
 
 class SpendIn(BaseModel):
@@ -223,7 +230,6 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
                 where.append(f"{col} = ?")
                 args.append(val)
         if overdue:
-            from .models import utcnow
             where.append("status='new' AND sla_due_at IS NOT NULL AND sla_due_at < ?")
             args.append(utcnow().isoformat())
         rows = db.q(f"SELECT * FROM leads WHERE {' AND '.join(where)} ORDER BY score DESC, last_seen DESC LIMIT ?", (*args, limit))
@@ -250,7 +256,6 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     def set_status(lead_id: int, p: StatusIn, _=Depends(auth)):
         if p.status not in ("new", "contacted", "qualified", "viewing", "won", "lost"):
             raise HTTPException(400, "invalid status")
-        from .models import utcnow
         with db.tx() as c:
             n = c.execute("UPDATE leads SET status=?, assigned_to=COALESCE(?,assigned_to) WHERE id=?", (p.status, p.assigned_to, lead_id)).rowcount
             if n:
@@ -414,6 +419,31 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
             raise HTTPException(401, "invalid API key")
         return Response(to_ics(list_viewings(db, agent_id)), media_type="text/calendar; charset=utf-8",
                         headers={"Cache-Control": "no-store"})
+
+    # ---------------------------------------------------------------- next-best-action & activity log
+    ACTIVITY_KINDS = ("note", "call", "message", "follow_up", "matches_sent")
+
+    @app.get("/leads/{lead_id}/next-actions")
+    def lead_next_actions(lead_id: int, _=Depends(auth)):
+        r = db.one("SELECT * FROM leads WHERE id=?", (lead_id,))
+        if not r:
+            raise HTTPException(404, "lead not found")
+        return next_actions(db, pipe.compliance, lead_dict(r))
+
+    @app.get("/tasks/today")
+    def tasks_today(agent_id: int | None = None, _=Depends(auth)):
+        return todays_tasks(db, pipe.compliance, agent_id)
+
+    @app.post("/leads/{lead_id}/activities")
+    def log_activity(lead_id: int, p: ActivityIn, _=Depends(auth)):
+        if p.kind not in ACTIVITY_KINDS:
+            raise HTTPException(400, f"kind must be one of {ACTIVITY_KINDS}")
+        if not db.one("SELECT 1 FROM leads WHERE id=?", (lead_id,)):
+            raise HTTPException(404, "lead not found")
+        with db.tx() as c:
+            c.execute("INSERT INTO activities(lead_id,ts,kind,channel,note) VALUES(?,?,?,?,?)",
+                      (lead_id, utcnow().isoformat(), p.kind, p.channel, (p.note or "")[:1000]))
+        return {"ok": True}
 
     @app.post("/inventory")
     async def inventory(request: Request, _=Depends(auth)):
