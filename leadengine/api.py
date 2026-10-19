@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hmac
 import json
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -22,6 +24,7 @@ from .inventory import import_projects_csv, match as match_projects
 from .outreach import draft
 from .pipeline import Pipeline
 from .radar import demand_radar
+from .viewings import ViewingConflict, list_viewings, schedule as schedule_viewing, to_ics
 from .roi import record_spend, roi_report
 
 DASH = Path(__file__).resolve().parent.parent / "dashboard" / "index.html"
@@ -78,6 +81,13 @@ class YieldIn(BaseModel):
     annual_rent: float
     service_charge: float = 0.0
     vacancy_pct: float = 5.0
+
+
+class ViewingIn(BaseModel):
+    start: datetime
+    duration_min: int = 30
+    location: str = ""
+    agent_id: int | None = None
 
 
 class SpendIn(BaseModel):
@@ -379,6 +389,31 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
                 "cash_needed_total": round(down + costs["total_costs"], 2), "rate_pct": rate, "years": yrs,
                 "monthly_payment": calc(mortgage_payment, loan, rate, yrs) if loan > 0 else 0.0,
                 "disclaimer": "Indicative only. Fees, LTV limits and rates change - verify current rules with the DLD and lenders."}
+
+    # ---------------------------------------------------------------- viewings
+    @app.post("/leads/{lead_id}/viewings")
+    def add_viewing(lead_id: int, p: ViewingIn, _=Depends(auth)):
+        try:
+            vid = schedule_viewing(db, lead_id, p.start, duration_min=p.duration_min, location=p.location, agent_id=p.agent_id)
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        except ViewingConflict as e:
+            raise HTTPException(409, str(e))
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        return {"id": vid}
+
+    @app.get("/viewings")
+    def viewings(agent_id: int | None = None, _=Depends(auth)):
+        return list_viewings(db, agent_id)
+
+    @app.get("/viewings.ics", include_in_schema=False)
+    def viewings_ics(agent_id: int | None = None, key: str = "", x_api_key: str = Header(default="")):
+        # Calendar apps can't send headers, so the feed also accepts ?key= (treat the URL as a secret; it can end up in access logs).
+        if s.api_key and not any(hmac.compare_digest(k.encode(), s.api_key.encode()) for k in (key, x_api_key)):
+            raise HTTPException(401, "invalid API key")
+        return Response(to_ics(list_viewings(db, agent_id)), media_type="text/calendar; charset=utf-8",
+                        headers={"Cache-Control": "no-store"})
 
     @app.post("/inventory")
     async def inventory(request: Request, _=Depends(auth)):
