@@ -15,6 +15,7 @@ from .connectors.forms import FormWebhookConnector, MetaLeadAdsConnector, parse_
 from .connectors.reddit import RedditConnector
 from .db import DB
 from .models import Signal
+from .inventory import import_projects_csv, match as match_projects
 from .outreach import draft
 from .pipeline import Pipeline
 from .radar import demand_radar
@@ -270,6 +271,17 @@ def create_app(settings: Settings | None = None, db: DB | None = None) -> FastAP
     @app.get("/radar")
     def radar(days: int = 14, _=Depends(auth)):
         return demand_radar(db, days=days)
+
+    @app.post("/inventory")
+    async def inventory(request: Request, _=Depends(auth)):
+        return import_projects_csv(db, (await request.body()).decode("utf-8-sig"))
+
+    @app.get("/leads/{lead_id}/matches")
+    def matches(lead_id: int, _=Depends(auth)):
+        r = db.one("SELECT * FROM leads WHERE id=?", (lead_id,))
+        if not r:
+            raise HTTPException(404, "lead not found")
+        return match_projects(db, lead_dict(r), s.golden_visa_min_aed)
 
     @app.post("/spend")
     def spend(p: SpendIn, _=Depends(auth)):

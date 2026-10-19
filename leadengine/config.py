@@ -23,6 +23,8 @@ class Settings:
     contact_hour_start: int = field(default_factory=lambda: int(_env("CONTACT_HOUR_START", "9")))
     contact_hour_end: int = field(default_factory=lambda: int(_env("CONTACT_HOUR_END", "20")))
     dnc_file: str = field(default_factory=lambda: _env("DNC_FILE"))  # one E.164 number per line (TDRA DNCR export)
+    # Golden-visa property threshold in AED — configuration, not law: verify current rules before relying on it.
+    golden_visa_min_aed: float = field(default_factory=lambda: float(_env("GOLDEN_VISA_MIN_AED", "2000000")))
     # Connectors
     reddit_client_id: str = field(default_factory=lambda: _env("REDDIT_CLIENT_ID"))
     reddit_client_secret: str = field(default_factory=lambda: _env("REDDIT_CLIENT_SECRET"))
