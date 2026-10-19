@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UAE Lead Engine</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#14181f;--mute:#667085;--line:#e4e7ec;--hot:#d92d20;--warm:#dc6803;--nur:#2e90fa;--ok:#12b76a;--accent:#0b5fff}
+  @media (prefers-color-scheme:dark){:root{--bg:#0e1116;--card:#171b22;--ink:#eef0f4;--mute:#98a2b3;--line:#2a303a;--accent:#5b9bff}}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+  h1{font-size:17px;margin:0;flex:1}input,select,button{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+  button{cursor:pointer}button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  main{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;padding:16px;max-width:1400px;margin:auto}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}.tile b{display:block;font-size:22px}
+  .tile span{color:var(--mute);font-size:12px}
+  table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;color:var(--mute);font-weight:600}tr.row{cursor:pointer}tr.row:hover{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+  .pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;color:#fff}
+  .HOT{background:var(--hot)}.WARM{background:var(--warm)}.NURTURE{background:var(--nur)}.DISCARD{background:var(--mute)}
+  .score{font-weight:700;font-variant-numeric:tabular-nums}.mute{color:var(--mute)}.tag{font-size:12px;padding:1px 6px;border:1px solid var(--line);border-radius:6px;margin-right:4px}
+  .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+  .heat{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)}
+  .up{color:var(--hot);font-weight:600}.down{color:var(--nur)}h2{font-size:14px;margin:0 0 8px}
+  dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:720px;width:92%;padding:18px}
+  dialog::backdrop{background:#0008}pre{white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:8px;border:1px solid var(--line);margin:6px 0}
+  .bd{display:grid;grid-template-columns:130px 1fr 38px;gap:6px;align-items:center;margin:3px 0}
+  .ok{color:var(--ok);font-weight:600}.no{color:var(--hot);font-weight:600}.ar{direction:rtl;text-align:right}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏙️ UAE Real Estate Lead Engine</h1>
+  <input id="key" type="password" placeholder="API key (if set)" style="width:150px">
+  <select id="tier"><option value="">All tiers</option><option>HOT</option><option>WARM</option><option>NURTURE</option></select>
+  <select id="label"><option value="">All intents</option><option>buyer</option><option>investor</option><option>renter</option><option>seller</option><option>landlord</option><option>seeker</option></select>
+  <button id="refresh" class="primary">Refresh</button>
+  <button id="seed">Load demo data</button>
+</header>
+<main>
+  <section>
+    <div class="tiles" id="tiles"></div>
+    <div class="card"><table><thead><tr><th>Score</th><th>Lead</th><th>Looking for</th><th>Sources</th><th>Consent</th></tr></thead><tbody id="rows"></tbody></table>
+      <p id="empty" class="mute" hidden>No leads yet — click “Load demo data”, or connect a source.</p></div>
+  </section>
+  <aside>
+    <div class="card"><h2>📡 Demand Radar <span class="mute">(14-day, de-identified)</span></h2><div id="radar"></div></div>
+    <div class="card" style="margin-top:16px"><h2>🛡️ Compliance posture</h2>
+      <p class="mute" style="margin:0">Public posts never unlock DM/phone/WhatsApp. Opt-outs are hashed into a suppression list. Every draft needs human approval and carries BRN + permit.</p></div>
+  </aside>
+</main>
+<dialog id="dlg"></dialog>
+<script>
+const $ = s => document.querySelector(s);
+const hdr = () => ({'x-api-key': $('#key').value, 'content-type':'application/json'});
+const api = async (p, o={}) => { const r = await fetch(p, {headers: hdr(), ...o}); if(!r.ok) throw new Error(r.status+' '+await r.text()); return r.json(); };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => n ? 'AED ' + (n >= 1e6 ? (n/1e6).toFixed(n%1e6?1:0)+'M' : Math.round(n/1e3)+'K') : '—';
+try { $('#key').value = localStorage.getItem('le_key') || '' } catch(e) {}
+
+async function load(){
+  try { localStorage.setItem('le_key', $('#key').value) } catch(e) {}
+  const q = new URLSearchParams(); if($('#tier').value) q.set('tier',$('#tier').value); if($('#label').value) q.set('label',$('#label').value);
+  try {
+    const [leads, stats, radar] = await Promise.all([api('/leads?'+q), api('/stats'), api('/radar')]);
+    const t = stats.tiers;
+    $('#tiles').innerHTML = [['HOT',t.HOT||0],['WARM',t.WARM||0],['NURTURE',t.NURTURE||0],['Noise filtered',(stats.counters.discarded_noise||0)+(stats.counters.discarded_agent_spam||0)]]
+      .map(([k,v])=>`<div class="tile"><b>${v}</b><span>${k}</span></div>`).join('');
+    $('#empty').hidden = leads.length > 0;
+    $('#rows').innerHTML = leads.map(l => `<tr class="row" data-id="${l.id}">
+      <td><span class="pill ${l.tier}">${l.tier}</span> <span class="score">${l.score}</span></td>
+      <td><b>${esc(l.display_name || 'Lead #'+l.id)}</b><br><span class="mute">${esc(l.label)} · ${esc(l.stage)}${l.profile?.wants_agent?' · asked for an agent':''}</span></td>
+      <td>${esc(l.primary_area || l.emirate || '—')}<br><span class="mute">${money(l.budget_max)}${l.bedrooms!=null?' · '+l.bedrooms+'BR':''}${l.timeline_days?' · ≤'+l.timeline_days+'d':''}</span></td>
+      <td>${(l.platforms||[]).map(p=>`<span class="tag">${esc(p)}</span>`).join('')}</td>
+      <td class="${l.consent_status==='opted_in'?'ok':'mute'}">${esc(l.consent_status)}</td></tr>`).join('');
+    const max = Math.max(1, ...radar.map(r=>r.demand_index));
+    $('#radar').innerHTML = radar.slice(0,10).map(r => `<div class="heat"><div style="flex:1"><b>${esc(r.area)}</b>
+      <div class="bar"><i style="width:${100*r.demand_index/max}%"></i></div></div>
+      <div style="text-align:right"><span class="${r.trend==='heating'?'up':r.trend==='cooling'?'down':'mute'}">${r.trend==='new'?'new':r.growth_pct!=null?(r.growth_pct>0?'▲':'▼')+Math.abs(r.growth_pct)+'%':''}</span>
+      <br><span class="mute">${r.signals} sig · ${r.buy_share_pct}% buy</span></div></div>`).join('') || '<span class="mute">No data yet</span>';
+  } catch(e){ $('#rows').innerHTML = `<tr><td colspan="5" class="no">${esc(e.message)}</td></tr>`; }
+}
+async function open(id){
+  const l = await api('/leads/'+id), bd = l.breakdown || {};
+  const bars = ['intent','stage','specificity','urgency','financial_readiness','source_quality','contactability','asked_for_agent'].map(k =>
+    `<div class="bd"><span class="mute">${k.replace(/_/g,' ')}</span><div class="bar"><i style="width:${Math.min(100,(bd[k]||0)*3.4)}%"></i></div><span>${bd[k]??0}</span></div>`).join('');
+  const sigs = (l.signals||[]).map(s=>`<pre class="${/[؀-ۿ]/.test(s.text)?'ar':''}"><b>${esc(s.platform)}</b> · ${esc(s.source_type)} · score ${s.score}\n${esc(s.text)}${s.url?`\n<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">source</a>`:''}</pre>`).join('');
+  $('#dlg').innerHTML = `<h2>${esc(l.display_name || 'Lead #'+l.id)} <span class="pill ${l.tier}">${l.tier} ${l.score}</span></h2>
+    <p class="mute">${esc(l.label)} · ${esc(l.stage)} · ${esc(l.primary_area||'')} · ${money(l.budget_max)} · consent: <b>${esc(l.consent_status)}</b>${l.sla_due_at?' · reply by '+new Date(l.sla_due_at).toLocaleString():''}</p>
+    <h2>Why this score</h2>${bars}<p class="mute">recency ×${bd.recency_multiplier} · cross-platform +${bd.cross_platform_bonus||0} ${(bd.flags||[]).map(f=>'· ⚠ '+esc(f)).join(' ')}</p>
+    <h2>Evidence</h2>${sigs}
+    <h2>Draft outreach <span class="mute">(human approval required)</span></h2>
+    ${['public_reply','whatsapp','call','email'].map(c=>`<button data-ch="${c}" data-id="${l.id}">${c}</button>`).join(' ')}
+    <div id="draft"></div><p style="text-align:right"><button id="close">Close</button></p>`;
+  $('#dlg').showModal();
+  $('#close').onclick = () => $('#dlg').close();
+  $('#dlg').querySelectorAll('[data-ch]').forEach(b => b.onclick = async () => {
+    const d = await api(`/leads/${b.dataset.id}/outreach?channel=${b.dataset.ch}`, {method:'POST'});
+    $('#draft').innerHTML = `<p class="${d.compliance.allowed?'ok':'no'}">${d.compliance.allowed?'✔ Allowed':'✖ Blocked'} — ${esc(d.compliance.reason)}</p>
+      <pre class="${d.language==='ar'?'ar':''}">${esc(d.body)}</pre>${d.notes.map(n=>`<div class="mute">• ${esc(n)}</div>`).join('')}`;
+  });
+}
+$('#rows').addEventListener('click', e => { const tr = e.target.closest('tr.row'); if(tr) open(tr.dataset.id); });
+$('#refresh').onclick = load; $('#tier').onchange = load; $('#label').onchange = load;
+$('#seed').onclick = async () => { try { await api('/demo/seed', {method:'POST'}); } catch(e){ alert(e.message) } load(); };
+load();
+</script>
+</body>
+</html>
