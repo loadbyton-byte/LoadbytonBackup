@@ -75,7 +75,7 @@ def test_api_roundtrip():
     from leadengine.db import DB
 
     c = TestClient(create_app(Settings(db_path=":memory:", api_key=""), DB(":memory:")))
-    c.post("/demo/seed")
+    c.post("/ingest/signals", json=[{"platform": "reddit", "external_id": "a1", "author_handle": "person_x1", "text": "Looking to buy a 2BR in Dubai Marina, budget AED 1.8M, cash buyer, viewing this week"}])
     assert c.post("/spend", json={"source": "reddit", "period": "2026-10", "amount_aed": 800}).json()["id"] > 0
     assert c.post("/spend", json={"source": "reddit", "period": "2026-10", "amount_aed": -1}).status_code == 400
     rows = c.get("/roi").json()

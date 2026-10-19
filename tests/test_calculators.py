@@ -77,3 +77,13 @@ def test_deal_sheet_422_without_budget_or_for_renters(client):
     renter = next(l["id"] for l in client.get("/leads").json() if l["label"] == "renter" and l["budget_max"])
     assert client.get(f"/leads/{renter}/deal-sheet").status_code == 422
     assert client.get("/leads/9999/deal-sheet").status_code == 404
+
+
+def test_rates_can_be_overridden_from_environment(monkeypatch):
+    monkeypatch.setenv("DLD_PCT", "3.5")
+    monkeypatch.setenv("AGENCY_PCT", "1.0")
+    monkeypatch.setenv("DEFAULT_YEARS", "20")
+    r = Settings(db_path=":memory:").rates
+    assert (r.dld_pct, r.agency_pct, r.default_years) == (3.5, 1.0, 20) and r.vat_pct == 5.0
+    monkeypatch.setenv("DLD_PCT", "not-a-number")
+    assert Settings(db_path=":memory:").rates.dld_pct == 4.0              # bad value falls back to the default, no crash

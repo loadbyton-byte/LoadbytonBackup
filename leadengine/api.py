@@ -181,8 +181,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
 
     @app.post("/demo/seed")
     def seed(_=Depends(auth)):
-        from .demo import demo_signals
-        return pipe.ingest_many(demo_signals())
+        from .demo import seed_demo
+        return seed_demo(pipe)
 
     # ---------------------------------------------------------------- webhooks (signed, no API key)
     @app.get("/webhooks/meta", response_class=PlainTextResponse)

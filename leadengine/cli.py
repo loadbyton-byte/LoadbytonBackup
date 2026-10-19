@@ -11,7 +11,7 @@ def main() -> None:
     s = sub.add_parser("serve")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
-    s.add_argument("--demo", action="store_true", help="seed synthetic demo data first")
+    s.add_argument("--demo", action="store_true", help="seed synthetic demo data (agents, projects, spend, leads, a viewing) first")
     c = sub.add_parser("classify")
     c.add_argument("text")
     args = ap.parse_args()
@@ -24,8 +24,8 @@ def main() -> None:
     from .api import create_app
     app = create_app()
     if args.demo:
-        from .demo import demo_signals
-        print("seeded:", app.state.pipeline.ingest_many(demo_signals()))
+        from .demo import seed_demo
+        print("seeded:", seed_demo(app.state.pipeline))
     uvicorn.run(app, host=args.host, port=args.port)
 
 

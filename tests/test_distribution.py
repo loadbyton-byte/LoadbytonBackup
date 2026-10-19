@@ -98,7 +98,7 @@ def test_agents_api_roundtrip():
     from leadengine.config import Settings
 
     c = TestClient(create_app(Settings(db_path=":memory:", api_key=""), DB(":memory:")))
-    c.post("/demo/seed")
+    c.post("/ingest/signals", json=[{"platform": "reddit", "external_id": "a1", "author_handle": "person_x1", "text": "Looking to buy a 2BR in Dubai Marina, budget AED 1.8M, cash buyer, viewing this week"}])
     a = c.post("/agents", json={"name": "Layla", "languages": ["en", "ar"], "areas": ["Dubai Marina"], "weight": 2}).json()
     assert c.get("/agents").json()[0]["name"] == "Layla" and c.get("/agents").json()[0]["open_leads"] == 0
     assert c.patch(f"/agents/{a['id']}", json={"active": False, "max_open": 3}).json()["active"] is False

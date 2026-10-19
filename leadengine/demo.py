@@ -50,3 +50,47 @@ def demo_signals() -> list[Signal]:
     out.append(Signal(platform="instagram", external_id="demo-x1", source_type="public_comment", author_handle="demo_user_1",
                       text="Still searching for a 2 bedroom in Dubai Marina, ready to book viewings", created_at=now - timedelta(hours=1)))
     return out
+
+
+_PROJECTS_CSV = """name,developer,area,emirate,min_price,max_price,bedrooms,handover,payment_plan
+Demo Marina Tower,Demo Developer A,Dubai Marina,Dubai,1.3M,2.6M,"1-3",2030,60/40
+Demo Hills Residences,Demo Developer B,Dubai Hills Estate,Dubai,2.1M,4.5M,"2-4",2029,70/30
+Demo South Gardens,Demo Developer C,Dubai South,Dubai,850000,1.5M,"studio,1,2",2028,80/20
+Demo Downtown Edge,Demo Developer A,Downtown Dubai,Dubai,1.9M,3.2M,"1-2",2031,50/50
+"""
+_AGENTS = [("Layla Hassan", ("en", "ar"), ("Dubai Marina", "Downtown Dubai")), ("Omar Khan", ("en",), ("Jumeirah Village Circle", "Business Bay")),
+           ("Sara Ahmed", ("en", "ar"), ("Dubai Hills Estate", "Arabian Ranches"))]
+
+
+def seed_demo(pipe) -> dict:
+    """Seed agents, inventory, spend, signals, a first contact and a viewing. Idempotent: safe to call repeatedly."""
+    from datetime import datetime, timedelta, timezone
+
+    from .inventory import import_projects_csv
+    from .roi import record_spend
+    from .viewings import schedule
+
+    db, out = pipe.db, {"agents": 0, "projects": 0}
+    if not db.one("SELECT 1 FROM agents"):                       # agents first so hot leads are routed on ingest
+        for name, langs, areas in _AGENTS:
+            pipe.distribution.add_agent(name, languages=langs, areas=areas, phone="+97150000000")
+            out["agents"] += 1
+    if not db.one("SELECT 1 FROM projects"):
+        out["projects"] = import_projects_csv(db, _PROJECTS_CSV)["imported"]
+    if not db.one("SELECT 1 FROM spend"):
+        for source, amount in (("reddit", 1200), ("facebook", 3000), ("tiktok", 900), ("linkedin", 1500)):
+            record_spend(db, source, "demo", "2026-10", amount)
+    out.update(pipe.ingest_many(demo_signals()))
+    out.setdefault("created", 0)
+    if not db.one("SELECT 1 FROM viewings"):
+        top = db.one("SELECT id, first_seen FROM leads WHERE primary_area='Dubai Marina' ORDER BY score DESC LIMIT 1")
+        if top:
+            schedule(db, top["id"], datetime.now() + timedelta(days=1), duration_min=45, location="Demo Marina Tower sales gallery")
+        # a first contact within SLA on one lead, and a slow one on another, so the ROI view has response times
+        for lead_id, minutes in ((r["id"], m) for r, m in zip(db.q("SELECT id FROM leads ORDER BY score DESC LIMIT 2"), (3, 40))):
+            seen = datetime.now(timezone.utc) - timedelta(hours=3)        # demo leads "arrived" earlier today
+            with db.tx() as c:
+                c.execute("UPDATE leads SET first_seen=? WHERE id=?", (seen.isoformat(), lead_id))
+                c.execute("INSERT INTO activities(lead_id,ts,kind) VALUES(?,?,?)", (lead_id, (seen + timedelta(minutes=minutes)).isoformat(), "status:contacted"))
+                c.execute("UPDATE leads SET status='contacted' WHERE id=? AND status='new'", (lead_id,))
+    return out

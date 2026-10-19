@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 
 def _env(name: str, default: str = "") -> str:
@@ -23,6 +23,21 @@ class Rates:
     default_years: int = 25
 
 
+    @classmethod
+    def from_env(cls) -> "Rates":
+        """Defaults overridden by env vars of the same name upper-cased (DLD_PCT, AGENCY_PCT, ...). Bad values fall back silently."""
+        base = cls()
+        vals = {}
+        for f in fields(cls):
+            raw = os.environ.get(f.name.upper())
+            if raw:
+                try:
+                    vals[f.name] = type(getattr(base, f.name))(raw)
+                except ValueError:
+                    pass
+        return cls(**vals)
+
+
 @dataclass
 class Settings:
     db_path: str = field(default_factory=lambda: _env("LEADENGINE_DB", "leadengine.db"))
@@ -38,7 +53,7 @@ class Settings:
     contact_hour_start: int = field(default_factory=lambda: int(_env("CONTACT_HOUR_START", "9")))
     contact_hour_end: int = field(default_factory=lambda: int(_env("CONTACT_HOUR_END", "20")))
     dnc_file: str = field(default_factory=lambda: _env("DNC_FILE"))  # one E.164 number per line (TDRA DNCR export)
-    rates: Rates = field(default_factory=Rates)
+    rates: Rates = field(default_factory=Rates.from_env)
     # Golden-visa property threshold in AED — configuration, not law: verify current rules before relying on it.
     golden_visa_min_aed: float = field(default_factory=lambda: float(_env("GOLDEN_VISA_MIN_AED", "2000000")))
     # Public lead capture: comma-separated browser origins allowed to POST /capture (empty = same host only).
