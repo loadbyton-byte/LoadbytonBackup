@@ -28,4 +28,5 @@ class Signal(BaseModel):
     consent_text: str | None = None                # the exact wording shown to the person (audit evidence)
     created_at: datetime = Field(default_factory=utcnow)
     campaign: str | None = None
+    listing_ref: str | None = None                 # portal listing/ad reference the enquiry was about
     extra: dict = Field(default_factory=dict)

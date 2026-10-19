@@ -13,6 +13,7 @@ from typing import Iterable
 
 from ..config import Settings
 from ..models import Signal
+from ..nlp.text import normalize
 from .base import Connector, http_json
 
 GRAPH = "https://graph.facebook.com/v21.0"
@@ -107,22 +108,29 @@ class FormWebhookConnector(Connector):
                                 source_type="lead_form")
 
 
-_PORTAL_FIELD = re.compile(r"^\s*(name|full name|phone|mobile|contact number|email|message|comments?|reference|listing ref(?:erence)?|property ref(?:erence)?)\s*[:\-]\s*(.+)$",
-                           re.I | re.M)
+_LABELS = {
+    "name": ("name", "full name", "buyer name", "customer name", "client name", "الاسم"),
+    "phone": ("phone", "phone number", "mobile", "mobile number", "contact number", "buyer phone", "whatsapp", "الهاتف", "رقم الهاتف", "الجوال"),
+    "email": ("email", "email address", "buyer email", "البريد الالكتروني"),
+    "message": ("message", "comment", "comments", "enquiry", "inquiry", "الرسالة"),
+    "ref": ("reference", "listing reference", "property reference", "listing ref", "property ref", "ref no", "ad id", "listing id",
+            "الرقم المرجعي", "رقم الاعلان"),
+}
+_LABEL_TO_KEY = {normalize(label): key for key, labels in _LABELS.items() for label in labels}
+_PORTAL_LINE = re.compile(r"^\s*([^:\n]{2,30}?)\s*[:：]\s*(.+?)\s*$", re.M)
 
 
 def parse_portal_email(portal: str, subject: str, body: str, message_id: str) -> Signal:
-    """Bayut / Property Finder / Dubizzle enquiry notification emails -> Signal (portal_inquiry)."""
+    """Bayut / Property Finder / Dubizzle enquiry notification emails (English or Arabic labels) -> Signal(portal_inquiry)."""
     found: dict[str, str] = {}
-    for m in _PORTAL_FIELD.finditer(body):
-        key = m.group(1).lower().replace("full ", "").replace("contact number", "phone").replace("mobile", "phone")
-        key = {"comment": "message", "comments": "message", "listing reference": "ref", "listing ref": "ref",
-               "property reference": "ref", "property ref": "ref", "reference": "ref"}.get(key, key)
-        found.setdefault(key, m.group(2).strip())
-    ref = found.pop("ref", None)
-    text = " . ".join(x for x in (subject, found.pop("message", None), f"listing {ref}" if ref else None) if x)
+    for m in _PORTAL_LINE.finditer(body):
+        key = _LABEL_TO_KEY.get(normalize(m.group(1)))
+        if key:
+            found.setdefault(key, m.group(2))
+    ref = found.get("ref")
+    text = " . ".join(x for x in (subject, found.get("message"), f"listing {ref}" if ref else None) if x)
     return Signal(platform=f"portal:{portal}", external_id=message_id, source_type="portal_inquiry", text=text,
-                  author_name=found.get("name"), phone=found.get("phone"), email=found.get("email"), campaign=ref)
+                  author_name=found.get("name"), phone=found.get("phone"), email=found.get("email"), campaign=ref, listing_ref=ref)
 
 
 def parse_csv(content: str, platform: str = "csv") -> list[Signal]:

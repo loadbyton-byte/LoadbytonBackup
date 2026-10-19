@@ -1,0 +1,7 @@
+You have received a new enquiry on Bayut
+
+Name: Sara Ahmed
+Phone: +971 50 765 4321
+Email: Sara@Example.com
+Property reference: BAY-12345
+Message: Is this still available? I'd like to view it this weekend.

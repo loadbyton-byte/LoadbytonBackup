@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS agents(
 MIGRATIONS: list[tuple[str, str, str]] = [
     ("leads", "assigned_agent_id", "INTEGER"),
     ("leads", "escalation_level", "INTEGER DEFAULT 0"),
+    ("signals", "listing_ref", "TEXT"),
 ]
 
 

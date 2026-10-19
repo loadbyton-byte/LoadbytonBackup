@@ -18,6 +18,8 @@ from .scoring import SLA_MINUTES, score_signal, tier_for
 
 LLMRefiner = Callable[[str, Intent], Intent]
 FORM_SOURCES = ("lead_form", "portal_inquiry")
+# Enquiring on several different listings within a week signals an active search.
+REPEAT_MIN_LISTINGS, REPEAT_WINDOW_DAYS, REPEAT_BONUS = 3, 7, 6
 
 
 @dataclass
@@ -60,10 +62,10 @@ class Pipeline:
         with self.db.tx() as c:
             c.execute(
                 "INSERT INTO signals(lead_id,platform,external_id,source_type,text,url,author_handle,created_at,ingested_at,"
-                "label,stage,score,areas,budget_max,campaign,intent) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "label,stage,score,areas,budget_max,campaign,intent,listing_ref) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (lead_id, sig.platform, sig.external_id, sig.source_type, sig.text[:4000], sig.url, sig.author_handle,
                  sig.created_at.isoformat(), utcnow().isoformat(), it.label, it.stage, sc.total,
-                 json.dumps(it.areas), it.budget_max, sig.campaign, json.dumps(it.to_dict())))
+                 json.dumps(it.areas), it.budget_max, sig.campaign, json.dumps(it.to_dict()), sig.listing_ref))
             if sig.consent_marketing:
                 c.execute("UPDATE leads SET consent_status='opted_in', consent_evidence=? WHERE id=?",
                           (json.dumps({"text": sig.consent_text, "platform": sig.platform, "at": utcnow().isoformat()}), lead_id))
@@ -163,8 +165,13 @@ class Pipeline:
         best = json.loads(best_row["intent"])
         platforms = sorted({r["platform"] for r in rows})
         corroboration = min(10, 5 * (len(platforms) - 1))
-        total = min(100, best_score + corroboration)
+        recent = now - timedelta(days=REPEAT_WINDOW_DAYS)
+        refs = {r["listing_ref"] for r in rows if r["listing_ref"] and datetime.fromisoformat(r["created_at"]) >= recent}
+        repeat = REPEAT_BONUS if len(refs) >= REPEAT_MIN_LISTINGS else 0
+        total = min(100, best_score + corroboration + repeat)
         best_bd["cross_platform_bonus"] = corroboration
+        if repeat:
+            best_bd["repeat_enquiry"] = repeat
         tier = tier_for(total)
         area_counts = Counter(a for r in rows for a in json.loads(r["areas"] or "[]"))
         latest = {k: None for k in ("budget_max", "bedrooms", "timeline_days", "financing")}
