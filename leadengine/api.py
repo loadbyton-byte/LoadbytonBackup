@@ -4,10 +4,11 @@ import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .capture import MAX_BODY, RateLimiter, handle_capture, origin_allowed, widget_js
 from .config import Settings
 from .connectors import ConnectorRegistry
 from .connectors.apify import ApifyConnector
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None) -> FastAP
     s = settings or Settings()
     db = db or DB(s.db_path)
     pipe = Pipeline(db, s)
+    limiter = RateLimiter(5, 10 * 60)
     reg = ConnectorRegistry()
     meta, forms = MetaLeadAdsConnector(s), FormWebhookConnector(s)
     for c in (RedditConnector(s), ApifyConnector(s), meta, forms):
@@ -228,6 +230,37 @@ def create_app(settings: Settings | None = None, db: DB | None = None) -> FastAP
     @app.post("/optout")
     def optout(p: OptOutIn):  # deliberately unauthenticated: anyone can opt out
         return {"leads_erased": pipe.opt_out(p.phone, p.email, p.handle, p.platform)}
+
+    # ---------------------------------------------------------------- public capture + widget (no API key by design)
+    def cors(origin: str | None, request: Request) -> dict:
+        ok = origin and origin_allowed(origin, s.capture_origins, request.headers.get("host"))
+        return {"Access-Control-Allow-Origin": origin, "Vary": "Origin"} if ok else {"Vary": "Origin"}
+
+    @app.options("/capture", include_in_schema=False)
+    def capture_preflight(request: Request):
+        h = cors(request.headers.get("origin"), request)
+        if "Access-Control-Allow-Origin" in h:
+            h.update({"Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type"})
+        return Response(status_code=204, headers=h)
+
+    @app.post("/capture")
+    async def capture(request: Request):
+        origin = request.headers.get("origin")
+        raw = await request.body()
+        if len(raw) > MAX_BODY * 2:
+            return JSONResponse({"error": "payload too large"}, 413, headers=cors(origin, request))
+        try:
+            payload = json.loads(raw or b"{}")
+        except ValueError:
+            return JSONResponse({"error": "invalid JSON"}, 400, headers=cors(origin, request))
+        ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "?"))
+        status, body = handle_capture(pipe, s, payload, origin, ip, limiter, host=request.headers.get("host"))
+        return JSONResponse(body, status, headers=cors(origin, request) if status != 403 else {"Vary": "Origin"})
+
+    @app.get("/widget.js", include_in_schema=False)
+    def widget(request: Request):
+        return Response(widget_js(s.public_url or str(request.base_url)), media_type="application/javascript",
+                        headers={"Cache-Control": "public, max-age=300"})
 
     # ---------------------------------------------------------------- agents & routing
     def agent_dict(r, open_leads: int = 0) -> dict:
