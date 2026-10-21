@@ -1,6 +1,8 @@
 """Deal-cost, mortgage and yield arithmetic. Pure functions; every rate comes from `Rates` (configuration, not law)."""
 from __future__ import annotations
 
+import math
+
 from .config import Rates
 
 
@@ -37,3 +39,28 @@ def rental_yield(price: float, annual_rent: float, *, service_charge: float = 0.
 def max_loan(price: float, *, ltv_pct: float) -> float:
     _need(price > 0 and 0 <= ltv_pct <= 100, "price must be > 0 and ltv_pct 0-100")
     return round(price * ltv_pct / 100, 2)
+
+
+_MAX_AMOUNT = 1e10
+
+
+def affordability(monthly_income: float, monthly_debts: float, down_payment: float, years: int, rate_pct: float, *, rates: Rates) -> dict:
+    """What a buyer can afford: the payment the debt-burden ratio allows, the loan that payment services, and the matching price
+    (also capped by the loan-to-value limit). Indicative only: DBR and LTV are configuration, verify current rules."""
+    for v in (monthly_income, monthly_debts, down_payment, rate_pct):
+        _need(isinstance(v, (int, float)) and math.isfinite(v), "amounts must be finite numbers")
+    _need(0 < monthly_income <= _MAX_AMOUNT and 0 <= monthly_debts <= _MAX_AMOUNT and 0 <= down_payment <= _MAX_AMOUNT,
+          "income must be > 0; debts and down payment >= 0; amounts at most 10 billion")
+    _need(isinstance(years, int) and 1 <= years <= 35, "years must be between 1 and 35")
+    _need(0 <= rate_pct <= 30, "rate must be between 0 and 30")
+    payment = max(0.0, monthly_income * rates.dbr_pct / 100 - monthly_debts)
+    n, r = years * 12, rate_pct / 100 / 12
+    loan = 0.0 if payment == 0 else (payment * n if r == 0 else payment * (1 - (1 + r) ** -n) / r)
+    max_price = loan + down_payment
+    capped, limited = max_price, "dbr"
+    if rates.default_ltv_pct < 100:
+        by_ltv = down_payment / (1 - rates.default_ltv_pct / 100)
+        if by_ltv < max_price:
+            capped, limited = by_ltv, "ltv"
+    return {"max_monthly_payment": round(payment, 2), "max_loan": round(loan, 2), "max_price": round(max_price, 2),
+            "ltv_capped_price": round(capped, 2), "dbr_pct": rates.dbr_pct, "limited_by": limited}

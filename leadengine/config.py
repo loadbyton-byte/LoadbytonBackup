@@ -21,6 +21,7 @@ class Rates:
     default_ltv_pct: float = 80.0       # typical max loan-to-value for a resident first purchase (varies by price/buyer; verify)
     default_rate_pct: float = 4.5       # illustrative interest rate (verify with lenders)
     default_years: int = 25
+    dbr_pct: float = 50.0               # max monthly debt payments as % of income used by the affordability calculator (verify current rules)
 
 
     @classmethod
