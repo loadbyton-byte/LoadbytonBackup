@@ -6,15 +6,17 @@ path it normalised, and forwards that same normalised path. Nothing in the tenan
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import html
 import json
 import logging
 import random
 import re
+import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import parse_qsl, urlencode
+from urllib.parse import parse_qs, parse_qsl, quote, urlencode
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
@@ -136,7 +138,7 @@ class Dispatcher:
     # -- helpers
     @staticmethod
     def _hardened(send, no_store: bool = False, head: bool = False):
-        extra = [(b"x-content-type-options", b"nosniff"), (b"referrer-policy", b"same-origin"), (b"x-frame-options", b"DENY")]
+        extra = [(b"x-content-type-options", b"nosniff"), (b"referrer-policy", b"no-referrer"), (b"x-frame-options", b"DENY")]
         if no_store:
             extra.append((b"cache-control", b"no-store"))
         names = {k for k, _ in extra}
@@ -374,15 +376,20 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
             raise ApiError(403, "csrf", "Missing or invalid CSRF token.")
         return info, raw
 
-    def start_session(request: Request, token: str) -> JSONResponse:
-        old = session_cookie(request.headers.get("cookie", ""))
-        if old:
-            accounts.logout(old)                                  # a pre-set session id is never adopted
+    def set_session_cookies(resp, token: str):
         secure = not s.dev_insecure_cookies
-        resp = _json(200, {"status": "ok"})
         resp.set_cookie(SESSION_COOKIE, token, max_age=SESSION_ABSOLUTE_S, httponly=True, secure=secure, samesite="lax", path="/")
         resp.set_cookie(CSRF_COOKIE, csrf_for(token), max_age=SESSION_ABSOLUTE_S, httponly=False, secure=secure, samesite="lax", path="/")
         return resp
+
+    def drop_old_session(request: Request) -> None:
+        old = session_cookie(request.headers.get("cookie", ""))
+        if old:
+            accounts.logout(old)                                  # a pre-set session id is never adopted
+
+    def start_session(request: Request, token: str) -> JSONResponse:
+        drop_old_session(request)
+        return set_session_cookies(_json(200, {"status": "ok"}), token)
 
     def login_result(request: Request, r) -> JSONResponse:
         if r.status == "ok":
@@ -390,6 +397,254 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
         if r.status == "mfa_required":
             return _json(200, {"status": "mfa_required", "mfa_token": r.mfa_token})
         raise ApiError(401, "invalid_credentials", "Invalid email or password.")
+
+    # ------------------------------------------------------------------ HTML auth pages (work without JavaScript)
+    FORM_COOKIE = "dbl_form"
+    form_key = hashlib.sha256(b"dbl-form-csrf" + s.encryption_key.encode()).digest()
+
+    def form_token(cookie: str) -> str:
+        return hmac.new(form_key, cookie.encode(), hashlib.sha256).hexdigest()[:40]
+
+    def esc(x: str) -> str:
+        return html.escape(x, quote=True)
+
+    def field(label: str, name: str, typ: str, value: str = "", hint: str = "", extra: str = "") -> str:
+        h = f'<span class="hint">{esc(hint)}</span>' if hint else ""
+        return f'<label>{esc(label)}<input name="{name}" type="{typ}" value="{esc(value)}" required {extra}>{h}</label>'
+
+    def build_form(action: str, fields: list[str], submit: str, token: str, hidden: dict | None = None) -> str:
+        hid = "".join(f'<input type="hidden" name="{k}" value="{esc(v)}">' for k, v in {"_csrf": token, **(hidden or {})}.items())
+        return f'<form class="form" method="post" action="{action}">{hid}{"".join(fields)}<button class="btn" type="submit">{esc(submit)}</button></form>'
+
+    def banner(kind: str, text_: str) -> str:
+        return f'<p class="{kind}" role="{"alert" if kind == "error" else "status"}">{esc(text_)}</p>' if text_ else ""
+
+    def auth_response(request: Request, name: str, build, status: int = 200, message: str = "", kind: str = "error", extra_cookies=None):
+        """Render an auth page with a fresh CSRF-bound form token. `build(token, st)` returns the form HTML (or "" for a message-only page)."""
+        lang = page_lang(request)
+        st = site.strings(lang)
+        cookie = request.cookies.get(FORM_COOKIE, "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", cookie):
+            cookie = secrets.token_urlsafe(24)
+        path = request.url.path
+        ctx = {"base_url": s.base_url, "path": path, "robots": '<meta name="robots" content="noindex,nofollow">',
+               "message": banner(kind, message), "form": build(form_token(cookie), st)}
+        resp = HTMLResponse(site.render_page(name, lang, ctx), status, headers={
+            "Content-Security-Policy": CSP, "Cache-Control": "no-store", "Vary": "Accept-Language, Cookie"})
+        resp.set_cookie(FORM_COOKIE, cookie, max_age=3600, httponly=True, secure=not s.dev_insecure_cookies, samesite="lax", path="/")
+        for fn in extra_cookies or []:
+            fn(resp)
+        return resp
+
+    async def read_form(request: Request) -> dict | None:
+        """URL-encoded form fields if the body is a form carrying a valid CSRF token, else None."""
+        if not request.headers.get("content-type", "").lower().startswith("application/x-www-form-urlencoded"):
+            return None
+        raw = (await request.body()).decode("utf-8", "replace")
+        data = {k: v[-1] for k, v in parse_qs(raw, keep_blank_values=True).items()}
+        cookie = request.cookies.get(FORM_COOKIE, "")
+        if not cookie or not hmac.compare_digest(data.get("_csrf", "").encode(), form_token(cookie).encode()):
+            return None
+        return data
+
+    def form_text(d: dict, key: str, limit: int = 300) -> str:
+        return d.get(key, "")[:limit]
+
+    def next_param(d: dict, request: Request) -> str:
+        n = d.get("next") or request.query_params.get("next", "")
+        return n if safe_next(n) else ""
+
+    ERR = {"weak_password": "auth.err.weak", "rate_limited": "auth.err.rate", "invalid_invite": "auth.err.token", "invalid_credentials": "auth.err.login",
+           "invalid_code": "auth.err.mfa"}
+
+    def err_text(request: Request, key: str) -> str:
+        return site.strings(page_lang(request))[key]
+
+    # --- /start
+    def start_form(request: Request, values: dict | None = None):
+        v = values or {}
+
+        def build(token, st):
+            return build_form("/start", [field(st["auth.email"], "email", "email", v.get("email", ""), extra='autocomplete="email" maxlength="254"'),
+                                         field(st["auth.password"], "password", "password", hint=st["auth.pw_hint"], extra='autocomplete="new-password" minlength="12" maxlength="256"'),
+                                         field(st["auth.name"], "name", "text", v.get("name", ""), extra='autocomplete="name" maxlength="120"'),
+                                         field(st["auth.agency"], "agency_name", "text", v.get("agency_name", ""), extra='autocomplete="organization" maxlength="120"')],
+                              st["auth.start.submit"], token)
+        return build
+
+    @app.get("/start", include_in_schema=False)
+    def start_page(request: Request):
+        if request.query_params.get("sent") == "1":
+            st = site.strings(page_lang(request))
+            return auth_response(request, "auth_start", lambda t, st_: "", message=st["auth.start.done_b"], kind="okmsg")
+        return auth_response(request, "auth_start", start_form(request), message=err_text(request, "auth.err.closed") if s.signup_mode == "invite" else "")
+
+    @app.post("/start", include_in_schema=False)
+    async def start_submit(request: Request):
+        d = await read_form(request)
+        if d is None:
+            return auth_response(request, "auth_start", start_form(request), 403, err_text(request, "auth.err.csrf"))
+        if s.signup_mode == "invite":
+            return auth_response(request, "auth_start", start_form(request), 403, err_text(request, "auth.err.closed"))
+        t0 = time.perf_counter()
+        try:
+            await run(accounts.register, form_text(d, "email", 254), form_text(d, "password"), form_text(d, "name", 200), form_text(d, "agency_name", 200),
+                      page_lang(request), client_ip(request))
+        except AccountError as e:
+            await floor(t0, REGISTER_FLOOR_S)
+            key = ERR.get(e.code, "auth.err.generic")
+            return auth_response(request, "auth_start", start_form(request, {k: d.get(k, "") for k in ("email", "name", "agency_name")}), 400 if e.code != "rate_limited" else 429, err_text(request, key))
+        await floor(t0, REGISTER_FLOOR_S)
+        return RedirectResponse("/start?sent=1", 303)
+
+    # --- /login (+ MFA)
+    def login_form(request: Request, email: str = "", nxt: str = ""):
+        def build(token, st):
+            return build_form("/login", [field(st["auth.email"], "email", "email", email, extra='autocomplete="username" maxlength="254"'),
+                                         field(st["auth.password"], "password", "password", extra='autocomplete="current-password" maxlength="300"')],
+                              st["auth.login.submit"], token, {"next": nxt} if nxt else None)
+        return build
+
+    @app.get("/login", include_in_schema=False)
+    def login_page(request: Request):
+        st = site.strings(page_lang(request))
+        note = st["auth.reset.done"] if request.query_params.get("reset") == "1" else ""
+        return auth_response(request, "auth_login", login_form(request, nxt=next_param({}, request)), message=note, kind="okmsg")
+
+    @app.post("/login", include_in_schema=False)
+    async def login_submit(request: Request):
+        d = await read_form(request)
+        nxt = next_param(d or {}, request)
+        if d is None:
+            return auth_response(request, "auth_login", login_form(request, nxt=nxt), 403, err_text(request, "auth.err.csrf"))
+        r = await run(accounts.login, form_text(d, "email", 254), form_text(d, "password"), client_ip(request))
+        if r.status == "ok":
+            drop_old_session(request)
+            return set_session_cookies(RedirectResponse(nxt or "/app", 303), r.session_token)
+        if r.status == "mfa_required":
+            resp = RedirectResponse("/login/mfa" + (f"?next={quote(nxt, safe='')}" if nxt else ""), 303)
+            resp.set_cookie("dbl_mfa", r.mfa_token, max_age=300, httponly=True, secure=not s.dev_insecure_cookies, samesite="lax", path="/login")
+            return resp
+        return auth_response(request, "auth_login", login_form(request, form_text(d, "email", 254), nxt), 401, err_text(request, "auth.err.login"))
+
+    def mfa_form(request: Request, nxt: str):
+        def build(token, st):
+            return build_form("/login/mfa", [field(st["auth.code"], "code", "text", hint=st["auth.mfa.hint"], extra='autocomplete="one-time-code" inputmode="text" maxlength="40"')],
+                              st["auth.mfa.submit"], token, {"next": nxt} if nxt else None)
+        return build
+
+    @app.get("/login/mfa", include_in_schema=False)
+    def mfa_page(request: Request):
+        if not request.cookies.get("dbl_mfa"):
+            return RedirectResponse("/login", 303)
+        return auth_response(request, "auth_mfa", mfa_form(request, next_param({}, request)))
+
+    @app.post("/login/mfa", include_in_schema=False)
+    async def mfa_submit(request: Request):
+        d = await read_form(request)
+        nxt = next_param(d or {}, request)
+        tok = request.cookies.get("dbl_mfa", "")
+        if not tok:
+            return RedirectResponse("/login", 303)
+        if d is None:
+            return auth_response(request, "auth_mfa", mfa_form(request, nxt), 403, err_text(request, "auth.err.csrf"))
+        r = await run(accounts.login_mfa, tok, form_text(d, "code", 40), client_ip(request))
+        if r.status != "ok":
+            return auth_response(request, "auth_mfa", mfa_form(request, nxt), 401, err_text(request, "auth.err.mfa"))
+        drop_old_session(request)
+        resp = set_session_cookies(RedirectResponse(nxt or "/app", 303), r.session_token)
+        resp.delete_cookie("dbl_mfa", path="/login")
+        return resp
+
+    # --- /forgot, /reset
+    def forgot_form(request: Request):
+        def build(token, st):
+            return build_form("/forgot", [field(st["auth.email"], "email", "email", extra='autocomplete="email" maxlength="254"')], st["auth.forgot.submit"], token)
+        return build
+
+    @app.get("/forgot", include_in_schema=False)
+    def forgot_page(request: Request):
+        if request.query_params.get("sent") == "1":
+            return auth_response(request, "auth_forgot", lambda t, st: "", message=err_text(request, "auth.forgot.done"), kind="okmsg")
+        return auth_response(request, "auth_forgot", forgot_form(request))
+
+    @app.post("/forgot", include_in_schema=False)
+    async def forgot_submit(request: Request):
+        d = await read_form(request)
+        if d is None:
+            return auth_response(request, "auth_forgot", forgot_form(request), 403, err_text(request, "auth.err.csrf"))
+        t0 = time.perf_counter()
+        await run(accounts.request_reset, form_text(d, "email", 254), client_ip(request))
+        await floor(t0, FORGOT_FLOOR_S)
+        return RedirectResponse("/forgot?sent=1", 303)
+
+    def token_form(action: str, label_fields, submit_key: str, tok: str):
+        def build(token, st):
+            return build_form(action, label_fields(st), st[submit_key], token, {"token": tok})
+        return build
+
+    def reset_fields(st):
+        return [field(st["auth.new_password"], "password", "password", hint=st["auth.pw_hint"], extra='autocomplete="new-password" minlength="12" maxlength="256"')]
+
+    @app.get("/reset", include_in_schema=False)
+    def reset_page(request: Request):
+        tok = request.query_params.get("token", "")[:200]
+        return auth_response(request, "auth_reset", token_form("/reset", reset_fields, "auth.reset.submit", tok))
+
+    @app.post("/reset", include_in_schema=False)
+    async def reset_submit(request: Request):
+        d = await read_form(request)
+        tok = (d or {}).get("token", "")[:200]
+        form = token_form("/reset", reset_fields, "auth.reset.submit", tok)
+        if d is None:
+            return auth_response(request, "auth_reset", form, 403, err_text(request, "auth.err.csrf"))
+        try:
+            ok = await run(accounts.reset_password, tok, form_text(d, "password"))
+        except AccountError as e:
+            return auth_response(request, "auth_reset", form, 400, err_text(request, ERR.get(e.code, "auth.err.generic")))
+        if not ok:
+            return auth_response(request, "auth_reset", lambda t, st: "", 400, err_text(request, "auth.err.token"))
+        return RedirectResponse("/login?reset=1", 303)
+
+    # --- /verify (GET only shows a button: mail scanners that prefetch links must not burn the one-time token)
+    @app.get("/verify", include_in_schema=False)
+    def verify_page(request: Request):
+        tok = request.query_params.get("token", "")[:200]
+        return auth_response(request, "auth_verify", token_form("/verify", lambda st: [], "auth.verify.h1", tok))
+
+    @app.post("/verify", include_in_schema=False)
+    async def verify_submit(request: Request):
+        d = await read_form(request)
+        if d is None:
+            return auth_response(request, "auth_verify", lambda t, st: "", 403, err_text(request, "auth.err.csrf"))
+        if await run(accounts.verify_email, form_text(d, "token", 200)):
+            return auth_response(request, "auth_verify", lambda t, st: f'<p><a class="btn" href="/login">{esc(st["auth.verify.go"])}</a></p>',
+                                 message=err_text(request, "auth.verify.ok"), kind="okmsg")
+        return auth_response(request, "auth_verify", lambda t, st: "", 400, err_text(request, "auth.verify.bad"))
+
+    # --- /invite
+    def invite_fields(st):
+        return [field(st["auth.name"], "name", "text", extra='autocomplete="name" maxlength="120"'),
+                field(st["auth.password"], "password", "password", hint=st["auth.invite.hint"], extra='autocomplete="new-password" maxlength="300"')]
+
+    @app.get("/invite", include_in_schema=False)
+    def invite_page(request: Request):
+        tok = request.query_params.get("token", "")[:200]
+        return auth_response(request, "auth_invite", token_form("/invite", invite_fields, "auth.invite.submit", tok))
+
+    @app.post("/invite", include_in_schema=False)
+    async def invite_submit(request: Request):
+        d = await read_form(request)
+        tok = (d or {}).get("token", "")[:200]
+        form = token_form("/invite", invite_fields, "auth.invite.submit", tok)
+        if d is None:
+            return auth_response(request, "auth_invite", form, 403, err_text(request, "auth.err.csrf"))
+        try:
+            await run(accounts.accept_invite, tok, form_text(d, "password"), form_text(d, "name", 200))
+        except AccountError as e:
+            bad = e.code == "invalid_invite"
+            return auth_response(request, "auth_invite", (lambda t, st: "") if bad else form, 400, err_text(request, ERR.get(e.code, "auth.err.generic")))
+        return RedirectResponse("/login", 303)
 
     @app.get("/healthz", include_in_schema=False)
     def healthz():

@@ -77,3 +77,58 @@ def fast_floors(monkeypatch):
     from leadengine.platform import app as appmod
     monkeypatch.setattr(appmod, "REGISTER_FLOOR_S", 0.03)
     monkeypatch.setattr(appmod, "FORGOT_FLOOR_S", 0.03)
+
+
+# ---------------------------------------------------------------- live server + browser fixtures (skip when Playwright/Chromium is missing)
+class Live:
+    def __init__(self, url, app, mailer):
+        self.url, self.app, self.mailer = url, app, mailer
+
+
+@pytest.fixture(scope="module")
+def live(tmp_path_factory):
+    pytest.importorskip("playwright.sync_api")
+    import socket
+    import threading
+    import time as _t
+
+    import uvicorn
+
+    from leadengine.platform.app import create_platform_app
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
+    url = f"http://127.0.0.1:{port}"
+    settings = Settings(db_path=":memory:", control_db=":memory:", data_dir=str(tmp_path_factory.mktemp("live")), encryption_key=generate_key(),
+                        base_url=url, dev_insecure_cookies=True, contact_email="hello@example.ae")
+    mailer = ConsoleMailer()
+    app = create_platform_app(settings, mailer, inline_mail=True)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    threading.Thread(target=server.run, daemon=True).start()
+    for _ in range(100):
+        if server.started:
+            break
+        _t.sleep(0.05)
+    yield Live(url, app, mailer)
+    server.should_exit = True
+
+
+@pytest.fixture()
+def browser_page():
+    import os
+    pw = pytest.importorskip("playwright.sync_api")
+    with pw.sync_playwright() as p:
+        exe = "/opt/pw-browsers/chromium"
+        try:
+            browser = p.chromium.launch(executable_path=exe) if os.path.exists(exe) else p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"chromium unavailable: {e}")
+
+        def make(width=1280, height=900, locale="en-US"):
+            ctx = browser.new_context(viewport={"width": width, "height": height}, locale=locale)
+            pg = ctx.new_page()
+            pg.problems = []
+            pg.on("console", lambda m: pg.problems.append(m.text) if m.type == "error" else None)
+            pg.on("pageerror", lambda e: pg.problems.append(str(e)))
+            pg.on("response", lambda r: pg.problems.append(f"{r.status} {r.url}") if r.status >= 400 else None)
+            return pg
+        yield make
+        browser.close()
