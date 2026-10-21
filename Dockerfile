@@ -5,12 +5,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY leadengine ./leadengine
 COPY dashboard ./dashboard
-# Run unprivileged; /data is the persistent volume holding the SQLite database.
+COPY site ./site
+# Run unprivileged; /data is the persistent volume holding the SQLite databases (single-tenant file, or the control DB + one file per workspace).
 RUN useradd --system --uid 10001 app && mkdir /data && chown app /data
 USER app
-ENV LEADENGINE_DB=/data/leadengine.db
+ENV LEADENGINE_DB=/data/leadengine.db DATA_DIR=/data
 VOLUME /data
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"
-# Production: uvicorn factory. Demo: override with `python -m leadengine.cli serve --demo --host 0.0.0.0`.
-CMD ["uvicorn", "leadengine.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD python -m leadengine.healthcheck
+# Platform mode when CONTROL_DB is set (accounts, workspaces, site); otherwise the single-tenant app. Demo: `python -m leadengine.cli serve --demo --host 0.0.0.0`.
+CMD ["uvicorn", "leadengine.main:create", "--factory", "--host", "0.0.0.0", "--port", "8000"]

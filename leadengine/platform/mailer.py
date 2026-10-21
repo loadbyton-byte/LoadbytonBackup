@@ -23,13 +23,21 @@ def _check(to: str, subject: str) -> None:
 
 
 class ConsoleMailer:
-    def __init__(self) -> None:
+    """Development/test mailer: keeps the last 200 messages in `outbox`. The body (it holds sign-in and reset links) is logged only when
+    `log_body` is set, which `make_mailer` does for DEV_INSECURE_COOKIES=1 deployments."""
+
+    def __init__(self, log_body: bool = False) -> None:
         self.outbox: list[dict] = []
+        self.log_body = log_body
 
     def send(self, to: str, subject: str, text: str, html: str | None = None) -> None:
         _check(to, subject)
         self.outbox.append({"to": to, "subject": subject, "text": text, "html": html})
-        log.info("mail to=%s subject=%s (body not logged)", to, subject)
+        del self.outbox[:-200]
+        if self.log_body:
+            log.warning("DEV MAIL to=%s subject=%s\n%s", to, subject, text)
+        else:
+            log.info("mail to=%s subject=%s (body not logged)", to, subject)
 
 
 class SmtpMailer:
@@ -52,7 +60,7 @@ class SmtpMailer:
 
 def make_mailer(settings: Settings) -> Mailer:
     if settings.mail_backend == "console":
-        return ConsoleMailer()
+        return ConsoleMailer(log_body=settings.dev_insecure_cookies)
     if settings.mail_backend == "smtp":
         if not settings.smtp_host:
             raise ValueError("MAIL_BACKEND=smtp requires SMTP_HOST")

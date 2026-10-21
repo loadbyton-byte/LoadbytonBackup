@@ -258,6 +258,8 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
     if not settings.encryption_key:
         raise ValueError("ENCRYPTION_KEY is required for platform mode (generate one with leadengine.platform.security.generate_key())")
     s = settings
+    if s.signup_mode not in ("open", "invite"):
+        raise ValueError("SIGNUP_MODE must be 'open' or 'invite'")
     control = ControlDB(s.control_db)
     enc = Encryptor(s.encryption_key)
     tenants = TenantManager(control, s.data_dir, s, enc)
