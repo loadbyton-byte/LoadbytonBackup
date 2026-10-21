@@ -3,7 +3,7 @@ import { $, esc, t, api, post, put, err, state } from './core.js';
 const SECRETS = [['meta_verify_token', 'st_meta_verify'], ['meta_app_secret', 'st_meta_secret'], ['meta_page_token', 'st_meta_page'], ['whatsapp_token', 'st_wa_token'], ['form_webhook_secret', 'st_form_secret']];
 
 export async function render(el) {
-  const [s, team, agents] = await Promise.all([api('/auth/settings'), api('/auth/team'), api('/agents').catch(() => [])]);
+  const [s, team, agents, stats] = await Promise.all([api('/auth/settings'), api('/auth/team'), api('/agents').catch(() => []), api('/magnets/stats').catch(() => null)]);
   const me = state.me;
   const flash = (sel, text, bad) => { const m = $(sel, el); m.className = 'msg ' + (bad ? 'err' : 'good'); m.textContent = text; };
   el.innerHTML = `<h1>${esc(t('st_title'))}</h1>
@@ -21,6 +21,17 @@ export async function render(el) {
     <form id="origins" class="stack"><label>${esc(t('st_origins'))}<textarea name="origins" spellcheck="false" placeholder="https://www.example.ae">${esc(s.capture_origins.join('\n'))}</textarea></label>
       <div><button class="primary" type="submit">${esc(t('st_save'))}</button></div><p id="origins-msg" class="msg" role="status"></p></form>
     <p class="mute">${esc(t('st_webhooks'))}: <code id="hook-base">${esc(s.embed.widget_url.replace(/\/widget\.js$/, ''))}</code></p></div>
+
+
+  <div class="card"><h2>${esc(t('st_pub_title'))}</h2><p class="mute">${esc(t('st_pub_note'))}</p>
+    <div id="public-pages">${s.public_pages.map(p => {
+      const c = p.tool === 'concierge' ? (stats ? stats.concierge : null) : (stats ? stats.tools[p.tool] : null);
+      const counts = c ? (p.tool === 'concierge'
+        ? `${esc(t('st_pub_started'))}: <b>${Number(c.started)}</b> · ${esc(t('st_pub_completed'))}: <b>${Number(c.completed)}</b> · ${esc(t('st_pub_declined'))}: <b>${Number(c.declined)}</b>`
+        : `${esc(t('st_pub_views'))}: <b>${Number(c.views)}</b> · ${esc(t('st_pub_submits'))}: <b>${Number(c.submits)}</b> · ${esc(t('st_pub_leads'))}: <b>${Number(c.leads)}</b>`) : '';
+      return `<div class="stack" data-pub="${esc(p.tool)}"><h3>${esc(t('st_pub_t_' + p.tool))}</h3>
+        <p><a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.url)}</a></p><p class="mute">${counts}</p>
+        <pre class="pub-iframe">${esc(p.iframe)}</pre></div>`; }).join('')}</div></div>
 
   <div class="card"><h2>${esc(t('st_integrations'))}</h2><p class="mute">${esc(t('st_integrations_note'))}</p>
     <form id="integrations" class="stack">

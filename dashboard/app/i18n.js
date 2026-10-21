@@ -1,5 +1,8 @@
 export const T = {
   en: {
+    st_pub_title: 'Public pages', st_pub_note: 'Share these links, or embed them on your website (add your website under allowed origins first). Visitors see results without giving details; a lead is created only with their consent.',
+    st_pub_views: 'Views', st_pub_submits: 'Calculations', st_pub_leads: 'Leads', st_pub_started: 'Started', st_pub_completed: 'Completed', st_pub_declined: 'Declined',
+    st_pub_t_affordability: 'How much can I afford?', st_pub_t_costs: 'Buying costs', st_pub_t_yield: 'Rental yield', st_pub_t_mortgage: 'Monthly mortgage payment', st_pub_t_concierge: 'Find my options (guided chat)',
     nav_markets: 'Markets', mk_known: 'Leads with a known origin', mk_top_country: 'Top source country', mk_top_focus: 'Top focus market', mk_unallocated: 'Unallocated spend (AED)',
     mk_countries: 'Where your leads come from', mk_h_market: 'Market', mk_h_score: 'Avg score', mk_h_share: 'Share', mk_h_growth: '28-day change', mk_h_cpl: 'Cost / lead', mk_h_window: 'Contact window',
     mk_expand: 'Click a country to see its cities. Origin comes only from what people gave you: a form field, their own phone number or an explicit "I am in…" phrase.',
@@ -43,6 +46,9 @@ export const T = {
     st_role_manager: 'Manager', st_role_agent: 'Agent', st_none: '— none —', st_invited: 'Invitation sent.',
   },
   ar: {
+    st_pub_title: 'الصفحات العامة', st_pub_note: 'شارك هذه الروابط أو ضمّنها في موقعك (أضف موقعك أولاً ضمن النطاقات المسموحة). يرى الزوار النتائج دون تقديم بيانات؛ ولا يُنشأ عميل إلا بموافقتهم.',
+    st_pub_views: 'المشاهدات', st_pub_submits: 'الحسابات', st_pub_leads: 'العملاء', st_pub_started: 'بدأوا', st_pub_completed: 'أكملوا', st_pub_declined: 'رفضوا',
+    st_pub_t_affordability: 'كم يمكنني أن أتحمّل؟', st_pub_t_costs: 'تكاليف الشراء', st_pub_t_yield: 'العائد الإيجاري', st_pub_t_mortgage: 'القسط الشهري للرهن', st_pub_t_concierge: 'اعثر على خياراتي (محادثة موجّهة)',
     nav_markets: 'الأسواق', mk_known: 'عملاء بأصل معروف', mk_top_country: 'أعلى دولة مصدر', mk_top_focus: 'أولى أسواق التركيز', mk_unallocated: 'إنفاق غير موزّع (درهم)',
     mk_countries: 'من أين يأتي عملاؤك', mk_h_market: 'السوق', mk_h_score: 'متوسط التقييم', mk_h_share: 'الحصة', mk_h_growth: 'التغير خلال 28 يوماً', mk_h_cpl: 'التكلفة / عميل', mk_h_window: 'نافذة التواصل',
     mk_expand: 'انقر على دولة لعرض مدنها. يُستخرج الأصل فقط مما قدّمه الناس: حقل في نموذج أو رقم هاتفهم أو عبارة صريحة مثل «أنا في…».',
