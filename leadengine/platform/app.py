@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import html
 import json
 import logging
 import random
@@ -16,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qsl, urlencode
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 
@@ -25,6 +26,7 @@ from .accounts import SESSION_ABSOLUTE_S, AccountError, AccountService, SessionI
 from .control import ControlDB
 from .mailer import Mailer, make_mailer
 from .rbac import allowed, normalize_path
+from . import site
 from .security import Encryptor
 from .tenancy import TenantManager
 
@@ -39,6 +41,7 @@ TENANT_PREFIXES = frozenset("leads agents tasks roi spend inventory viewings vie
                             "maintenance demo overview".split())
 PUBLIC_EXACT = frozenset({"/capture", "/widget.js", "/optout", "/webhooks/meta", "/webhooks/whatsapp"})
 PUBLIC_FORM = re.compile(r"^/webhooks/form/[a-z0-9_-]{1,32}$")
+EMAIL_OK = re.compile(r"^[^@\s<>\"']{1,64}@[^@\s<>\"']+\.[^@\s<>\"']{2,}$")
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 STATUS = {"rate_limited": 429, "forbidden": 403, "not_verified": 403, "invalid_credentials": 401, "already_member": 409}
 
@@ -47,6 +50,12 @@ class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str = ""):
         super().__init__(code)
         self.status, self.code, self.message = status, code, message or code
+
+
+def safe_next(target: str) -> bool:
+    """Only same-site absolute paths: never a scheme, host, protocol-relative or backslash form."""
+    return (isinstance(target, str) and target.startswith("/") and not target.startswith("//") and "\\" not in target
+            and ":" not in target.split("?")[0] and not any(ord(c) < 0x20 for c in target) and len(target) <= 300)
 
 
 def session_cookie(header: str) -> str | None:
@@ -266,6 +275,52 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
 
     from ..api import DASH
     app.mount("/static", StaticFiles(directory=DASH.parent), name="static")
+
+    app.mount("/site-static", StaticFiles(directory=site.SITE_DIR / "static"), name="site-static")
+    LANG_COOKIE = "dbl_lang"
+    CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+
+    def page_lang(request: Request) -> str:
+        return site.detect_lang(request.headers.get("accept-language"), request.cookies.get(LANG_COOKIE), request.query_params.get("lang"))
+
+    def html_page(request: Request, name: str, ctx: dict | None = None, status: int = 200) -> HTMLResponse:
+        lang = page_lang(request)
+        ctx = {"base_url": s.base_url, **(ctx or {})}
+        return HTMLResponse(site.render_page(name, lang, ctx), status, headers={"Content-Security-Policy": CSP, "Vary": "Accept-Language, Cookie",
+                                                                              "Cache-Control": "no-cache"})
+
+    def contact_block(request: Request) -> str:
+        st = site.strings(page_lang(request))
+        if s.contact_email and EMAIL_OK.match(s.contact_email):
+            e = html.escape(s.contact_email, quote=True)
+            return f'<p><strong>{html.escape(st["contact.email_label"])}</strong> <a href="mailto:{e}">{e}</a></p>'
+        return f'<p class="mute">{html.escape(st["contact.none"])}</p>'
+
+    def make_page_route(name: str):
+        def route(request: Request):
+            ctx = {"contact_block": contact_block(request)} if name == "contact" else {}
+            return html_page(request, name, ctx)
+        return route
+
+    for _name, (_path, _tpl) in site.PAGES.items():
+        app.add_api_route(_path, make_page_route(_name), methods=["GET"], response_class=HTMLResponse, include_in_schema=False)
+
+    @app.get("/lang/{lang}", include_in_schema=False)
+    def set_lang(lang: str, next: str = "/"):
+        if lang not in site.LANGS:
+            return _not_found()
+        target = next if safe_next(next) else "/"
+        resp = RedirectResponse(target, 303)
+        resp.set_cookie(LANG_COOKIE, lang, max_age=365 * 86400, samesite="lax", secure=not s.dev_insecure_cookies, path="/")
+        return resp
+
+    @app.get("/sitemap.xml", include_in_schema=False)
+    def sitemap():
+        return Response(site.sitemap_xml(s.base_url), media_type="application/xml")
+
+    @app.get("/robots.txt", include_in_schema=False)
+    def robots():
+        return PlainTextResponse(f"User-agent: *\nAllow: /\nDisallow: /app\nDisallow: /auth/\nSitemap: {s.base_url.rstrip('/')}/sitemap.xml\n")
 
     @app.exception_handler(ApiError)
     async def _api_error(_, e: ApiError):

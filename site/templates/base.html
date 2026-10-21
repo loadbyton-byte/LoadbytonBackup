@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="{{$lang}}" dir="{{$dir}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{$title}}</title>
+<meta name="description" content="{{$description}}">
+<link rel="canonical" href="{{$canonical}}">
+<link rel="alternate" hreflang="en" href="{{$alt_en}}">
+<link rel="alternate" hreflang="ar" href="{{$alt_ar}}">
+<link rel="alternate" hreflang="x-default" href="{{$alt_en}}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{brand}}">
+<meta property="og:title" content="{{$title}}">
+<meta property="og:description" content="{{$description}}">
+<meta property="og:url" content="{{$canonical}}">
+<meta property="og:image" content="{{$base_url}}/static/brand/opengraph.png">
+<meta property="og:locale" content="{{$og_locale}}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0f1714">
+<link rel="icon" href="/static/brand/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="/site-static/site.css">
+<script type="application/ld+json">{{!jsonld}}</script>
+</head>
+<body>
+<a class="skip" href="#main">{{nav.skip}}</a>
+{{>header}}
+<main id="main">
+{{!content}}
+</main>
+{{>footer}}
+</body>
+</html>

@@ -73,6 +73,7 @@ class Settings:
     dev_insecure_cookies: bool = field(default_factory=lambda: _env("DEV_INSECURE_COOKIES") in ("1", "true", "yes"))
     signup_mode: str = field(default_factory=lambda: _env("SIGNUP_MODE", "open"))          # open | invite
     mail_backend: str = field(default_factory=lambda: _env("MAIL_BACKEND", "console"))     # console | smtp
+    contact_email: str = field(default_factory=lambda: _env("CONTACT_EMAIL"))               # shown on the public Contact page
     mail_from: str = field(default_factory=lambda: _env("MAIL_FROM", "DigitalBurj Leads <no-reply@localhost>"))
     smtp_host: str = field(default_factory=lambda: _env("SMTP_HOST"))
     smtp_port: int = field(default_factory=lambda: int(_env("SMTP_PORT", "587") or 587))

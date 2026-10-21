@@ -1,0 +1,30 @@
+<section class="hero">
+<div>
+<h1>{{home.h1}}</h1>
+<p class="lead">{{home.lead}}</p>
+<p class="cta"><a class="btn" href="/start">{{cta.start}}</a> <a class="btn ghost" href="/how-it-works">{{cta.how}}</a></p>
+</div>
+<img src="/static/brand/real-estate.webp" alt="{{home.hero_alt}}" width="480" height="360" fetchpriority="high">
+</section>
+<section>
+<h2>{{home.f_title}}</h2>
+<div class="cards">
+{{#each home.f 6}}<article class="card"><h3>{{.t}}</h3><p>{{.b}}</p></article>
+{{/each}}</div>
+</section>
+<section>
+<h2>{{home.s_title}}</h2>
+<ol class="steps">
+{{#each home.s 3}}<li><h3>{{.t}}</h3><p>{{.b}}</p></li>
+{{/each}}</ol>
+</section>
+<section class="band">
+<h2>{{home.c_title}}</h2>
+<p>{{home.c_body}}</p>
+<p><a href="/compliance">{{nav.compliance}}</a></p>
+</section>
+<section class="final">
+<h2>{{home.final_h}}</h2>
+<p>{{home.final_b}}</p>
+<p class="cta"><a class="btn" href="/start">{{cta.start}}</a> <a class="btn ghost" href="/contact">{{cta.contact}}</a></p>
+</section>
