@@ -73,7 +73,11 @@ def test_brand_loads_and_no_problems(page):
 
 
 def test_every_tab_renders(page):
+    from datetime import datetime, timedelta, timezone
+    gst = datetime.now(timezone(timedelta(hours=4)))
     expect = {"agents": "Layla", "tasks": "First response", "roi": "reddit", "inventory": "Marina Edge"}
+    if gst.hour == 23 and gst.minute >= 30:                    # first responses fall due after today's cut-off (UAE midnight): nothing is "due today" yet
+        expect["tasks"] = "Nothing due today"
     for tab, text in expect.items():
         page.click(f"nav.tabs [data-tab={tab}]")
         page.wait_for_selector(f"#tab-{tab}:not([hidden]) >> text={text}", timeout=5000)
