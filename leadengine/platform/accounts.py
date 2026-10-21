@@ -1,4 +1,4 @@
-"""Account service: registration, email verification, login, sessions, lockout. (Reset, MFA and invites are added in Task 5.)
+"""Account service: registration, email verification, login, sessions, lockout, password reset, TOTP MFA, invites and API keys.
 
 Failure responses are uniform: unknown email, wrong password, locked account and IP throttling all return the same `LoginResult`,
 and exactly one scrypt verification runs in every case so timing does not reveal which one it was."""
@@ -9,11 +9,13 @@ import hmac
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from ..config import Settings
 from .control import ControlDB
 from .mailer import Mailer
-from .security import check_password_policy, hash_password, hash_token, new_token, verify_password
+from .security import (Encryptor, check_password_policy, hash_password, hash_token, new_recovery_codes, new_token, new_totp_secret, otpauth_uri,
+                       totp_matching_step, verify_password)
 
 SESSION_IDLE_S = 12 * 3600
 SESSION_ABSOLUTE_S = 30 * 86400
@@ -68,7 +70,17 @@ class SessionInfo:
     tenant_name: str
 
 
+@dataclass(frozen=True)
+class MfaSetup:
+    secret: str
+    uri: str
+
+
 FAILED = LoginResult("failed")
+INVITE_TTL_S = 7 * 86400
+RESET_TTL_S = 3600
+RESET_LIMIT, RESET_WINDOW_S = 5, 3600
+ROLES_INVITABLE = ("manager", "agent")
 
 
 def normalize_email(email: str) -> str:
@@ -81,8 +93,18 @@ def csrf_for(session_token: str) -> str:
 
 
 class AccountService:
-    def __init__(self, control: ControlDB, mailer: Mailer, tenants, settings: Settings, now=time.time):
+    def __init__(self, control: ControlDB, mailer: Mailer, tenants, settings: Settings, now=time.time,
+                 encryptor: Encryptor | None = None, background=None):
+        """`background(fn)` runs mail sends off the request path (a thread pool in production) so response time never reveals
+        whether an email address has an account. Default: send inline."""
         self.control, self.mailer, self.tenants, self.s, self.now = control, mailer, tenants, settings, now
+        self.encryptor, self.background = encryptor, background
+
+    def _send(self, to: str, subject: str, text: str) -> None:
+        if self.background:
+            self.background(lambda: self.mailer.send(to, subject, text))
+        else:
+            self.mailer.send(to, subject, text)
 
     # ------------------------------------------------------------------ helpers
     def _count(self, key: str, window: float) -> int:
@@ -130,7 +152,7 @@ class AccountService:
         self._record(f"reg:{ip}")
         pw_hash = hash_password(password)                       # computed for new and existing emails alike (equal timing)
         if self.control.one("SELECT 1 FROM users WHERE email=?", (email,)):
-            self.mailer.send(email, "DigitalBurj Leads sign-up attempt",
+            self._send(email, "DigitalBurj Leads sign-up attempt",
                              "Someone tried to create a DigitalBurj Leads account with this address. If it was you, sign in or reset your "
                              f"password at {self.s.base_url.rstrip('/')}/login. If not, ignore this email.")
             return RegisterResult(0, 0)
@@ -140,7 +162,7 @@ class AccountService:
                             (email, pw_hash, name, lang if lang in ("en", "ar") else "en", _iso(self.now()))).lastrowid
             c.execute("INSERT INTO memberships(user_id,tenant_id,role) VALUES(?,?,'owner')", (uid, tenant.id))
         token = self._issue_token(uid, "verify", VERIFY_TTL_S)
-        self.mailer.send(email, "Verify your DigitalBurj Leads email",
+        self._send(email, "Verify your DigitalBurj Leads email",
                          f"Welcome to DigitalBurj Leads.\n\nConfirm your email address: {self._link('/verify', token)}\n\nThe link works once and expires in 24 hours.")
         self.control.audit("register", user_id=uid, tenant_id=tenant.id, ip=ip)
         return RegisterResult(uid, tenant.id)
@@ -223,6 +245,195 @@ class AccountService:
         self.control.audit("sessions_revoked", user_id=user_id)
 
 
+    # ------------------------------------------------------------------ password reset / change
+    def request_reset(self, email: str, ip: str = "") -> None:
+        """Always returns None. Mail goes out only for known addresses, deferred when a background runner is set."""
+        email = normalize_email(email)
+        if self._count(f"reset:{ip}", RESET_WINDOW_S) >= RESET_LIMIT:
+            return None
+        self._record(f"reset:{ip}")
+        user = self.control.one("SELECT id FROM users WHERE email=?", (email,)) if EMAIL_RE.match(email) else None
+        if user:
+            token = self._issue_token(user["id"], "reset", RESET_TTL_S)
+            self._send(email, "Reset your DigitalBurj Leads password",
+                       f"Choose a new password: {self._link('/reset', token)}\n\nThe link works once and expires in 1 hour. "
+                       "If you did not ask for this, ignore this email.")
+            self.control.audit("reset_requested", user_id=user["id"], ip=ip)
+        return None
+
+    def _set_password(self, user_id: int, new_password: str, keep_session: str | None = None) -> None:
+        h = hash_password(new_password)
+        with self.control.tx() as c:
+            c.execute("UPDATE users SET password_hash=?, failed_logins=0, locked_until=0 WHERE id=?", (h, user_id))
+            c.execute("UPDATE auth_tokens SET used_at=? WHERE user_id=? AND kind='reset' AND used_at IS NULL", (self.now(), user_id))
+            if keep_session:
+                c.execute("DELETE FROM sessions WHERE user_id=? AND token_hash!=?", (user_id, hash_token(keep_session)))
+            else:
+                c.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
+
+    def reset_password(self, raw_token: str, new_password: str) -> bool:
+        problem = check_password_policy(new_password)
+        if problem:                                           # checked first so a typo does not burn the one-time token
+            raise AccountError("weak_password", problem)
+        uid = self._consume_token(raw_token, "reset")
+        if uid is None:
+            return False
+        self._set_password(uid, new_password)
+        self.control.audit("password_reset", user_id=uid)
+        return True
+
+    def change_password(self, user_id: int, old_password: str, new_password: str, keep_session: str | None = None) -> bool:
+        problem = check_password_policy(new_password)
+        if problem:
+            raise AccountError("weak_password", problem)
+        row = self.control.one("SELECT password_hash FROM users WHERE id=?", (user_id,))
+        if not row or not verify_password(old_password, row["password_hash"] or _dummy_hash()):
+            return False
+        self._set_password(user_id, new_password, keep_session)
+        self.control.audit("password_changed", user_id=user_id)
+        return True
+
+    # ------------------------------------------------------------------ MFA (TOTP)
+    def _enc(self) -> Encryptor:
+        if self.encryptor is None:
+            raise AccountError("mfa_unavailable", "Two-factor authentication needs ENCRYPTION_KEY to be configured.")
+        return self.encryptor
+
+    def mfa_begin(self, user_id: int) -> MfaSetup:
+        enc, user = self._enc(), self.control.one("SELECT email, totp_enabled FROM users WHERE id=?", (user_id,))
+        if not user:
+            raise AccountError("not_found")
+        if user["totp_enabled"]:
+            raise AccountError("mfa_enabled", "Two-factor authentication is already on.")
+        secret = new_totp_secret()
+        with self.control.tx() as c:
+            c.execute("UPDATE users SET totp_secret_enc=?, totp_last_step=0 WHERE id=?", (enc.encrypt(secret), user_id))
+        return MfaSetup(secret, otpauth_uri(secret, user["email"]))
+
+    def mfa_confirm(self, user_id: int, code: str) -> list[str]:
+        enc, user = self._enc(), self.control.one("SELECT totp_secret_enc, totp_enabled FROM users WHERE id=?", (user_id,))
+        if not user or not user["totp_secret_enc"] or user["totp_enabled"]:
+            raise AccountError("invalid_state", "Start two-factor setup first.")
+        step = totp_matching_step(enc.decrypt(user["totp_secret_enc"]), code, self.now())
+        if step is None:
+            raise AccountError("invalid_code", "That code is not valid.")
+        codes = new_recovery_codes()
+        with self.control.tx() as c:
+            c.execute("UPDATE users SET totp_enabled=1, totp_last_step=? WHERE id=?", (step, user_id))
+            c.execute("DELETE FROM recovery_codes WHERE user_id=?", (user_id,))
+            c.executemany("INSERT INTO recovery_codes(user_id,code_hash) VALUES(?,?)", [(user_id, hash_token(x)) for x in codes])
+        self.control.audit("mfa_enabled", user_id=user_id)
+        return codes
+
+    def mfa_disable(self, user_id: int, password: str) -> bool:
+        row = self.control.one("SELECT password_hash FROM users WHERE id=?", (user_id,))
+        if not row or not verify_password(password, row["password_hash"] or _dummy_hash()):
+            return False
+        with self.control.tx() as c:
+            c.execute("UPDATE users SET totp_enabled=0, totp_secret_enc=NULL, totp_last_step=0 WHERE id=?", (user_id,))
+            c.execute("DELETE FROM recovery_codes WHERE user_id=?", (user_id,))
+        self.control.audit("mfa_disabled", user_id=user_id)
+        return True
+
+    def login_mfa(self, mfa_token: str, code: str, ip: str = "") -> LoginResult:
+        """Second factor. A wrong code does not consume the token but counts toward the account lockout."""
+        h = hash_token(mfa_token or "") if isinstance(mfa_token, str) and len(mfa_token) <= 200 else ""
+        row = self.control.one("SELECT user_id FROM auth_tokens WHERE token_hash=? AND kind='mfa' AND used_at IS NULL AND expires_at>?", (h, self.now()))
+        user = self.control.one("SELECT * FROM users WHERE id=?", (row["user_id"],)) if row else None
+        code = (code or "").strip().lower() if isinstance(code, str) else ""
+        if not user or user["locked_until"] > self.now() or not user["totp_enabled"] or self._count(f"ip:{ip}", IP_LOGIN_WINDOW_S) >= IP_LOGIN_LIMIT:
+            self._record(f"ip:{ip}")
+            return FAILED
+        ok = False
+        if len(code) == 6 and code.isdigit():
+            step = totp_matching_step(self._enc().decrypt(user["totp_secret_enc"]), code, self.now())
+            if step is not None and step > user["totp_last_step"]:           # a time-step can be used only once
+                with self.control.tx() as c:
+                    ok = c.execute("UPDATE users SET totp_last_step=? WHERE id=? AND totp_last_step<?", (step, user["id"], step)).rowcount == 1
+        elif re.fullmatch(r"[a-z0-9]{5}-[a-z0-9]{5}", code):
+            with self.control.tx() as c:
+                ok = c.execute("UPDATE recovery_codes SET used_at=? WHERE user_id=? AND code_hash=? AND used_at IS NULL",
+                               (self.now(), user["id"], hash_token(code))).rowcount == 1
+        if not ok:
+            self._record(f"ip:{ip}")
+            self._fail(user, ip)
+            return FAILED
+        self._consume_token(mfa_token, "mfa")
+        with self.control.tx() as c:
+            c.execute("UPDATE users SET failed_logins=0, locked_until=0 WHERE id=?", (user["id"],))
+        return LoginResult("ok", self._new_session(user["id"], ip), None)
+
+    # ------------------------------------------------------------------ team invites
+    def _role_of(self, user_id: int, tenant_id: int) -> str | None:
+        m = self.control.one("SELECT role FROM memberships WHERE user_id=? AND tenant_id=?", (user_id, tenant_id))
+        return m["role"] if m else None
+
+    def invite(self, tenant_id: int, inviter_id: int, email: str, role: str, agent_id: int | None = None) -> str:
+        if self._role_of(inviter_id, tenant_id) != "owner":
+            raise AccountError("forbidden", "Only the workspace owner can invite people.")
+        inviter = self.control.one("SELECT email_verified_at FROM users WHERE id=?", (inviter_id,))
+        if not inviter or not inviter["email_verified_at"]:
+            raise AccountError("not_verified", "Verify your email address before inviting people.")
+        email = normalize_email(email)
+        if role not in ROLES_INVITABLE:
+            raise AccountError("invalid_role", "Invite as manager or agent.")
+        if len(email) > 254 or not EMAIL_RE.match(email):
+            raise AccountError("invalid_email", "Enter a valid email address.")
+        raw, h = new_token()
+        with self.control.tx() as c:
+            c.execute("INSERT INTO invites(token_hash,tenant_id,email,role,agent_id,expires_at) VALUES(?,?,?,?,?,?)",
+                      (h, tenant_id, email, role, agent_id, self.now() + INVITE_TTL_S))
+        t = self.control.one("SELECT name FROM tenants WHERE id=?", (tenant_id,))
+        self.mailer.send(email, f"You are invited to {t['name']} on DigitalBurj Leads",
+                         f"You have been invited to join {t['name']} as {role}.\n\nAccept: {self._link('/invite', raw)}\n\nThe link expires in 7 days.")
+        self.control.audit("invite_sent", user_id=inviter_id, tenant_id=tenant_id, invited_role=role)
+        return raw
+
+    def accept_invite(self, raw_token: str, password: str, name: str) -> int:
+        bad = AccountError("invalid_invite", "This invitation is not valid or has expired.")
+        if not isinstance(raw_token, str) or not raw_token or len(raw_token) > 200:
+            raise bad
+        inv = self.control.one("SELECT * FROM invites WHERE token_hash=? AND accepted_at IS NULL AND expires_at>?", (hash_token(raw_token), self.now()))
+        if not inv:
+            raise bad
+        user = self.control.one("SELECT * FROM users WHERE email=?", (inv["email"],))
+        if user:
+            if not verify_password(password, user["password_hash"] or _dummy_hash()):
+                raise AccountError("invalid_credentials", "Enter the password of your existing account.")
+            if self._role_of(user["id"], inv["tenant_id"]):
+                raise AccountError("already_member", "You are already a member of this workspace.")
+            uid = user["id"]
+        else:
+            problem = check_password_policy(password)
+            if problem:
+                raise AccountError("weak_password", problem)
+            if not 1 <= len((name or "").strip()) <= 120:
+                raise AccountError("invalid_input", "Name is required.")
+            with self.control.tx() as c:
+                uid = c.execute("INSERT INTO users(email,password_hash,name,email_verified_at,created_at) VALUES(?,?,?,?,?)",
+                                (inv["email"], hash_password(password), name.strip(), _iso(self.now()), _iso(self.now()))).lastrowid
+        with self.control.tx() as c:
+            c.execute("INSERT INTO memberships(user_id,tenant_id,role,agent_id) VALUES(?,?,?,?)", (uid, inv["tenant_id"], inv["role"], inv["agent_id"]))
+            c.execute("UPDATE invites SET accepted_at=? WHERE token_hash=?", (self.now(), inv["token_hash"]))
+        self.control.audit("invite_accepted", user_id=uid, tenant_id=inv["tenant_id"], role=inv["role"])
+        return uid
+
+    # ------------------------------------------------------------------ workspace API key
+    def rotate_api_key(self, tenant_id: int, actor_id: int) -> str:
+        if self._role_of(actor_id, tenant_id) != "owner":
+            raise AccountError("forbidden", "Only the workspace owner can rotate the API key.")
+        raw = "dbl_" + new_token()[0]
+        with self.control.tx() as c:
+            c.execute("UPDATE tenants SET api_key_hash=? WHERE id=?", (hash_token(raw), tenant_id))
+        self.control.audit("api_key_rotated", user_id=actor_id, tenant_id=tenant_id)
+        return raw
+
+    def verify_api_key(self, raw: str) -> int | None:
+        if not isinstance(raw, str) or not raw.startswith("dbl_") or len(raw) > 200:
+            return None
+        row = self.control.one("SELECT id FROM tenants WHERE api_key_hash=? AND status='active'", (hash_token(raw),))
+        return row["id"] if row else None
+
+
 def _iso(epoch: float) -> str:
-    from datetime import datetime, timezone
     return datetime.fromtimestamp(epoch, timezone.utc).isoformat()

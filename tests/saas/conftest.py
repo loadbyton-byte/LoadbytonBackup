@@ -6,6 +6,7 @@ from leadengine.config import Settings
 from leadengine.platform import security
 from leadengine.platform.control import ControlDB
 from leadengine.platform.mailer import ConsoleMailer
+from leadengine.platform.security import Encryptor, generate_key
 from leadengine.platform.tenancy import Tenant
 
 
@@ -60,7 +61,8 @@ def mailer():
 @pytest.fixture()
 def accounts(control, mailer, clock):
     from leadengine.platform.accounts import AccountService
-    return AccountService(control, mailer, FakeTenants(control), Settings(db_path=":memory:", base_url="https://app.example"), now=clock)
+    return AccountService(control, mailer, FakeTenants(control), Settings(db_path=":memory:", base_url="https://app.example"), now=clock,
+                          encryptor=Encryptor(generate_key()))
 
 
 def token_from(mail: dict) -> str:
