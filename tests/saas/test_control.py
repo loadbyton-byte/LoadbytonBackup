@@ -84,3 +84,9 @@ def test_audit_records_detail_and_refuses_secret_like_keys(cdb):
         with pytest.raises(ValueError):
             cdb.audit("x", **{bad: "v"})
     assert cdb.one("SELECT COUNT(*) n FROM audit")["n"] == 1
+
+
+def test_control_db_creates_its_parent_directory(tmp_path):
+    path = tmp_path / "does" / "not" / "exist" / "control.db"
+    ControlDB(str(path))
+    assert path.exists()

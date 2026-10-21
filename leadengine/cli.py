@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 
 
 def main() -> None:
@@ -36,7 +37,7 @@ def main() -> None:
             raise SystemExit("--demo is single-tenant only; unset CONTROL_DB, or sign in and seed from the workspace.")
         try:
             app = create_platform_app(settings)
-        except ValueError as e:
+        except (ValueError, OSError, sqlite3.Error) as e:
             raise SystemExit(f"error: {e}")
     else:
         from .api import create_app
@@ -64,7 +65,7 @@ def operator_command(args, settings) -> None:
         password = os.environ.get("OWNER_PASSWORD") or getpass.getpass("Password (12+ characters): ")
         uid, tid = create_owner(settings, args.email, password, args.name, args.agency)
         print(f"created owner {args.email} (user {uid}, workspace {tid})")
-    except ValueError as e:
+    except (ValueError, OSError, sqlite3.Error) as e:
         raise SystemExit(f"error: {e}")
 
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -55,6 +56,8 @@ class ControlDB:
     def __init__(self, path: str = ":memory:"):
         self.path = path
         self._lock = threading.RLock()
+        if path != ":memory:" and os.path.dirname(path):
+            os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys=ON")
