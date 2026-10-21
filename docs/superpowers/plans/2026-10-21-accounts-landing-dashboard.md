@@ -55,7 +55,7 @@
 
 ### Task 1: Security primitives
 
-**Files:** Create `leadengine/platform/__init__.py`, `leadengine/platform/security.py`; modify `requirements.txt` (add `cryptography>=42`); Test `tests/platform/test_security.py` (create `tests/platform/__init__.py`).
+**Files:** Create `leadengine/platform/__init__.py`, `leadengine/platform/security.py`; modify `requirements.txt` (add `cryptography>=42`); Test `tests/saas/test_security.py` (create `tests/saas/__init__.py`).
 
 **Interfaces — Produces:**
 - `hash_password(password: str) -> str` (format `scrypt$n$r$p$salt_b64$hash_b64`); `verify_password(password: str, stored: str) -> bool`; `check_password_policy(password: str) -> str | None` (error text or None).
@@ -64,14 +64,14 @@
 - `class Encryptor(key: str)`: `encrypt(text: str) -> str`, `decrypt(token: str) -> str`; `generate_key() -> str`.
 
 - [ ] **Step 1: Write failing tests** — `test_hash_format_and_roundtrip` (parts == `["scrypt","32768","8","1",…]`, verify True, wrong False, two hashes of same password differ), `test_policy` (11 chars → error, 12 ok, 257 → error), `test_verify_rejects_garbage_stored_values` (`""`, `"x"`, `"scrypt$1"` → False, no exception), `test_token_pair` (hash_token(raw)==hash, 64 hex chars, tokens unique), `test_totp_rfc6238_vector` (secret base32 of `12345678901234567890`, `totp_code(secret, 59) == "287082"`, at=1111111109 → `"081804"`), `test_totp_window` (code valid at ±30 s, invalid at ±90 s, 5-digit/letters rejected), `test_recovery_codes_unique_and_formatted`, `test_encryptor_roundtrip_and_tamper` (tampered token raises `ValueError`, wrong key raises `ValueError`).
-- [ ] **Step 2: Run** `python -m pytest tests/platform/test_security.py -q` → FAIL (module missing).
+- [ ] **Step 2: Run** `python -m pytest tests/saas/test_security.py -q` → FAIL (module missing).
 - [ ] **Step 3: Implement** per interfaces: scrypt with `maxmem=64*1024*1024`; `hmac.compare_digest`; TOTP via HMAC-SHA1 dynamic truncation, 6 digits; wrap Fernet errors into `ValueError`.
 - [ ] **Step 4: Run** full suite `python -m pytest -q` → all pass.
 - [ ] **Step 5: Commit** `feat(platform): password, token, TOTP and encryption primitives`.
 
 ### Task 2: Control database
 
-**Files:** Create `leadengine/platform/control.py`; Test `tests/platform/test_control.py`.
+**Files:** Create `leadengine/platform/control.py`; Test `tests/saas/test_control.py`.
 
 **Interfaces — Consumes:** nothing. **Produces:** `class ControlDB(path: str)` with `.conn` (sqlite3, row_factory Row, WAL, foreign keys ON), `q(sql, args=()) -> list[Row]`, `one(sql, args=()) -> Row | None`, `tx()` context manager, `audit(action: str, *, user_id: int | None = None, tenant_id: int | None = None, ip: str | None = None, **detail) -> None`. Tables: `users(id, email UNIQUE COLLATE NOCASE, password_hash, name, lang, email_verified_at, totp_secret_enc, totp_enabled INT, failed_logins INT, locked_until TEXT, created_at)`, `tenants(id, name, public_key UNIQUE, data_path, status, api_key_hash, created_at)`, `memberships(user_id, tenant_id, role, agent_id, PRIMARY KEY(user_id, tenant_id))`, `sessions(token_hash PRIMARY KEY, user_id, tenant_id, mfa_ok INT, csrf_hash, created_at, last_seen, expires_at)`, `invites(token_hash PRIMARY KEY, tenant_id, email, role, agent_id, expires_at, accepted_at)`, `auth_tokens(token_hash PRIMARY KEY, user_id, kind, expires_at, used_at)`, `recovery_codes(user_id, code_hash, used_at)`, `login_attempts(key, ts)`, `tenant_settings(tenant_id, key, value_enc, PRIMARY KEY(tenant_id,key))`, `audit(id, ts, user_id, tenant_id, action, detail, ip)`.
 
@@ -80,7 +80,7 @@
 
 ### Task 3: Mailer
 
-**Files:** Create `leadengine/platform/mailer.py`; modify `leadengine/config.py` (`mail_backend`, `mail_from`, `smtp_host/port/user/password/tls`, `base_url`, `dev_insecure_cookies`, env `MAIL_BACKEND` default `console`); Test `tests/platform/test_mailer.py`.
+**Files:** Create `leadengine/platform/mailer.py`; modify `leadengine/config.py` (`mail_backend`, `mail_from`, `smtp_host/port/user/password/tls`, `base_url`, `dev_insecure_cookies`, env `MAIL_BACKEND` default `console`); Test `tests/saas/test_mailer.py`.
 
 **Interfaces — Produces:** `class Mailer(Protocol): send(to: str, subject: str, text: str, html: str | None = None) -> None`; `ConsoleMailer` with `.outbox: list[dict]` and logging; `SmtpMailer(settings)` (STARTTLS, `smtplib`); `make_mailer(settings) -> Mailer` (`smtp` requires host else `ValueError`).
 
@@ -89,7 +89,7 @@
 
 ### Task 4: Account service — register, verify, login, sessions, lockout
 
-**Files:** Create `leadengine/platform/accounts.py`; Test `tests/platform/test_accounts_login.py`.
+**Files:** Create `leadengine/platform/accounts.py`; Test `tests/saas/test_accounts_login.py`.
 
 **Interfaces — Consumes:** `ControlDB`, `security.*`, `Mailer`, `TenantManager.create_tenant(name: str) -> Tenant` (Task 6; use a stub in tests until then — define `Tenant = dataclass(id, name, public_key)` in `tenancy.py` as part of this task's stub import). **Produces:** `class AccountService(control, mailer, tenants, settings, now=time.time)` with:
 - `register(email, password, name, agency_name, lang="en", ip="") -> RegisterResult(user_id, tenant_id)`; raises `AccountError(code, message)` (`weak_password`, `invalid_email`, `rate_limited`); existing email returns the *same* success shape without revealing existence (and mails the owner "someone tried to register").
@@ -103,7 +103,7 @@
 
 ### Task 5: Account service — reset, password change, MFA, invites, API key
 
-**Files:** Modify `leadengine/platform/accounts.py`; Test `tests/platform/test_accounts_security.py`.
+**Files:** Modify `leadengine/platform/accounts.py`; Test `tests/saas/test_accounts_security.py`.
 
 **Interfaces — Produces:** `request_reset(email, ip="") -> None` (always returns None; mails link only if user exists); `reset_password(raw_token, new_password) -> bool` (single use, 1 h, revokes all sessions); `change_password(user_id, old, new) -> bool` (revokes all other sessions); `mfa_begin(user_id) -> MfaSetup(secret, uri)`; `mfa_confirm(user_id, code) -> list[str]` (recovery codes, shown once); `mfa_disable(user_id, password) -> bool`; `login_mfa(mfa_token, code_or_recovery, ip="") -> LoginResult` (consumes recovery code; same code/timestep cannot be replayed); `invite(tenant_id, inviter_id, email, role, agent_id=None) -> str` (raises `AccountError("not_verified")` if inviter email unverified; 7-day TTL); `accept_invite(raw_token, password, name) -> int`; `rotate_api_key(tenant_id, actor_id) -> str` (raw shown once); `verify_api_key(raw) -> int | None` (tenant id).
 
@@ -112,7 +112,7 @@
 
 ### Task 6: Workspace manager
 
-**Files:** Create `leadengine/platform/tenancy.py`; modify `leadengine/api.py` (accept `api_key_check=None` no-op unchanged; none required if per-tenant app is created with `api_key=""`); Test `tests/platform/test_tenancy.py`.
+**Files:** Create `leadengine/platform/tenancy.py`; modify `leadengine/api.py` (accept `api_key_check=None` no-op unchanged; none required if per-tenant app is created with `api_key=""`); Test `tests/saas/test_tenancy.py`.
 
 **Interfaces — Produces:** `@dataclass Tenant(id: int, name: str, public_key: str)`; `class TenantManager(control, data_dir: str, base_settings: Settings, encryptor: Encryptor, max_open: int = 50)`:
 - `create_tenant(name: str) -> Tenant` (public key `pk_` + 22 url-safe chars; creates `data_dir/tenants/<id>.db` via `DB(path)`);
@@ -127,7 +127,7 @@
 
 ### Task 7: Role policy
 
-**Files:** Create `leadengine/platform/rbac.py`; Test `tests/platform/test_rbac.py`.
+**Files:** Create `leadengine/platform/rbac.py`; Test `tests/saas/test_rbac.py`.
 
 **Interfaces — Produces:** `allowed(role: str, method: str, path: str) -> bool` and `normalize_path(path: str) -> str | None` (None for suspicious paths: contains `..`, `//` after decoding, backslash, NUL, or percent-encoded `/` or `.`; strips one trailing slash). Policy (first match wins, default **owner-only**): `agent` may `GET /leads`, `GET /leads/{id}` and sub-reads (`matches`, `next-actions`, `deal-sheet`), `POST /leads/{id}/{status,activities,viewings,outreach}`, `GET /tasks/today`, `GET /viewings`; `manager` may everything on the tenant API except `/maintenance/purge`, `DELETE /leads/{id}`, `POST /demo/seed`, API-key and team routes (owner); `owner` all. Unknown paths and methods → owner only.
 
@@ -136,7 +136,7 @@
 
 ### Task 8: Platform app — dispatcher, CSRF, auth routes, public tenant routes
 
-**Files:** Create `leadengine/platform/app.py`; modify `leadengine/cli.py` (use platform app when `CONTROL_DB` set); modify `leadengine/config.py` (`control_db`, `data_dir`, `encryption_key`); Test `tests/platform/test_app_auth.py`, `tests/platform/test_isolation.py`.
+**Files:** Create `leadengine/platform/app.py`; modify `leadengine/cli.py` (use platform app when `CONTROL_DB` set); modify `leadengine/config.py` (`control_db`, `data_dir`, `encryption_key`); Test `tests/saas/test_app_auth.py`, `tests/saas/test_isolation.py`.
 
 **Interfaces — Consumes:** Tasks 1–7. **Produces:** `create_platform_app(settings: Settings, mailer: Mailer | None = None) -> FastAPI` with `app.state.accounts`, `.tenants`, `.control`.
 - JSON auth routes (all under `/auth`, no tenant): `POST /auth/register`, `POST /auth/login`, `POST /auth/login/mfa`, `POST /auth/logout`, `POST /auth/forgot`, `POST /auth/reset`, `POST /auth/verify`, `GET /auth/me` (user, role, workspace name, verified, csrf token, language), `POST /auth/password`, `POST /auth/mfa/begin|confirm|disable`, `POST /auth/invite`, `POST /auth/invite/accept`, `POST /auth/api-key`. Login sets `dbl_session` and `dbl_csrf` cookies per Global Constraints.
@@ -152,14 +152,14 @@
 
 ### Task 9: Agent scoping
 
-**Files:** Modify `leadengine/api.py` (`GET /leads` gains `assigned_agent_id: int | None` filter), `leadengine/platform/app.py` (agent role: inject `assigned_agent_id=<membership.agent_id>` into `GET /leads`/`GET /tasks/today?agent_id=`, and for `/leads/{id}…` check lead ownership via `tenants.db_for` before forwarding); Test `tests/platform/test_agent_scope.py`.
+**Files:** Modify `leadengine/api.py` (`GET /leads` gains `assigned_agent_id: int | None` filter), `leadengine/platform/app.py` (agent role: inject `assigned_agent_id=<membership.agent_id>` into `GET /leads`/`GET /tasks/today?agent_id=`, and for `/leads/{id}…` check lead ownership via `tenants.db_for` before forwarding); Test `tests/saas/test_agent_scope.py`.
 
 - [ ] **Step 1: Failing tests** — `test_agent_sees_only_assigned_leads` (list excludes others even with `?assigned_agent_id=<other>` override attempt); `test_agent_cannot_open_unassigned_lead_or_its_subroutes` (403); `test_agent_can_update_own_lead_status`; `test_agent_without_linked_agent_sees_nothing`; `test_manager_unaffected`.
 - [ ] **Step 2–5:** FAIL → implement → full suite → commit `feat(platform): agent-scoped access`.
 
 ### Task 10: Site renderer, i18n and public pages
 
-**Files:** Create `leadengine/platform/site.py`, `site/templates/{base,home,features,how,security,compliance,pricing,faq,contact,privacy,terms,auth_*}.html`, `site/i18n/{en,ar}.json`, `site/pricing.json`; Test `tests/platform/test_site.py`.
+**Files:** Create `leadengine/platform/site.py`, `site/templates/{base,home,features,how,security,compliance,pricing,faq,contact,privacy,terms,auth_*}.html`, `site/i18n/{en,ar}.json`, `site/pricing.json`; Test `tests/saas/test_site.py`.
 
 **Interfaces — Produces:** `render_page(name: str, lang: str, ctx: dict | None = None) -> str` (escaping all dynamic values, `{{key}}`-style i18n and `{{>partial}}` includes, no new dependency); `detect_lang(accept_language: str, cookie: str | None) -> "en" | "ar"`; `sitemap_xml(base_url) -> str`; routes in the platform app: `/`, `/features`, `/how-it-works`, `/security`, `/compliance`, `/pricing`, `/faq`, `/contact`, `/privacy`, `/terms`, `/sitemap.xml`, `/robots.txt`, `/lang/{en|ar}` (sets cookie, redirects back).
 
@@ -168,14 +168,14 @@
 
 ### Task 11: Auth pages (HTML forms)
 
-**Files:** Create `site/templates/auth_{start,login,mfa,forgot,reset,verify,invite}.html`; modify `leadengine/platform/app.py` (form routes `GET/POST /start /login /login/mfa /forgot /reset /verify /invite`, working without JavaScript via redirect-after-POST with a CSRF-protected form token); Test `tests/platform/test_auth_pages.py`, `tests/platform/test_site_browser.py` (skips without Playwright).
+**Files:** Create `site/templates/auth_{start,login,mfa,forgot,reset,verify,invite}.html`; modify `leadengine/platform/app.py` (form routes `GET/POST /start /login /login/mfa /forgot /reset /verify /invite`, working without JavaScript via redirect-after-POST with a CSRF-protected form token); Test `tests/saas/test_auth_pages.py`, `tests/saas/test_site_browser.py` (skips without Playwright).
 
 - [ ] **Step 1: Failing tests** — `test_start_form_creates_account_and_redirects_to_verify_notice`; `test_login_form_sets_cookie_and_redirects_to_app`; `test_forms_reject_missing_csrf`; `test_error_messages_are_uniform_and_translated` (en/ar); `test_open_redirect_blocked` (`next=https://evil.example` ignored; only same-site paths); `test_reset_page_with_bad_token_shows_generic_error`. Browser: register → read link from `ConsoleMailer.outbox` → verify → lands on dashboard empty-state; login/logout; forgot → reset; RTL layout; 375 px no horizontal scroll; zero console errors; keyboard-only submit.
 - [ ] **Step 2–5:** FAIL → implement → full suite + browser → commit `feat(site): register, sign-in and recovery pages`.
 
 ### Task 12: Dashboard shell, Overview, Settings, onboarding
 
-**Files:** Create `dashboard/app.html`, `dashboard/app/{router,shell,overview,leads,tasks,agents,inventory,roi,settings}.js`, `dashboard/app/app.css`; modify `leadengine/platform/app.py` (`GET /app` serves shell to authenticated users, redirects others to `/login`); modify `leadengine/api.py` (add `GET /overview` returning KPI numbers, status counts, 14-day lead trend, onboarding state flags `{agents, inventory, widget_origin, whatsapp, team}`); Test `tests/platform/test_overview.py`, `tests/platform/test_dashboard_browser.py`.
+**Files:** Create `dashboard/app.html`, `dashboard/app/{router,shell,overview,leads,tasks,agents,inventory,roi,settings}.js`, `dashboard/app/app.css`; modify `leadengine/platform/app.py` (`GET /app` serves shell to authenticated users, redirects others to `/login`); modify `leadengine/api.py` (add `GET /overview` returning KPI numbers, status counts, 14-day lead trend, onboarding state flags `{agents, inventory, widget_origin, whatsapp, team}`); Test `tests/saas/test_overview.py`, `tests/saas/test_dashboard_browser.py`.
 
 **Interfaces — Produces:** `GET /overview` → `{"new_today": int, "hot": int, "warm": int, "overdue": int, "within_sla_pct": int | None, "by_status": {status: n}, "trend": [{"date": "YYYY-MM-DD", "leads": n} ×14], "onboarding": {...bool}}`.
 
@@ -184,7 +184,7 @@
 
 ### Task 13: CLI, Docker, docs, final verification
 
-**Files:** Modify `leadengine/cli.py` (`maintain` command: iterate all workspaces running escalate + purge; `create-owner` for first operator), `Dockerfile` (include `site/`, volumes `/data` for control and tenants), `README.md`, `.env.example` (`CONTROL_DB`, `DATA_DIR`, `ENCRYPTION_KEY`, `BASE_URL`, `MAIL_*`, `DEV_INSECURE_COOKIES`); Test `tests/platform/test_cli_maintain.py`.
+**Files:** Modify `leadengine/cli.py` (`maintain` command: iterate all workspaces running escalate + purge; `create-owner` for first operator), `Dockerfile` (include `site/`, volumes `/data` for control and tenants), `README.md`, `.env.example` (`CONTROL_DB`, `DATA_DIR`, `ENCRYPTION_KEY`, `BASE_URL`, `MAIL_*`, `DEV_INSECURE_COOKIES`); Test `tests/saas/test_cli_maintain.py`.
 
 - [ ] **Step 1: Failing tests** — `test_maintain_runs_escalation_and_purge_for_every_workspace_and_isolates_failures` (one workspace DB corrupt → others still processed, exit code non-zero and error listed); `test_serve_uses_platform_app_only_when_control_db_set`; `test_startup_validation_messages`.
 - [ ] **Step 2–3:** FAIL → implement. **Step 4:** run full suite (all unit, isolation, auth, site, browser) and the clean-venv run of the production command with `CONTROL_DB`/`ENCRYPTION_KEY`/`DEV_INSECURE_COOKIES=1`: register via curl, verify via the console mail link, call `/leads` with the session cookie → 200, without → 401. **Step 5: Commit and push** `docs: platform mode, Docker and maintain CLI`.
