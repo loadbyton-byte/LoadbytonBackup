@@ -1,5 +1,13 @@
 export const T = {
   en: {
+    nav_markets: 'Markets', mk_known: 'Leads with a known origin', mk_top_country: 'Top source country', mk_top_focus: 'Top focus market', mk_unallocated: 'Unallocated spend (AED)',
+    mk_countries: 'Where your leads come from', mk_h_market: 'Market', mk_h_score: 'Avg score', mk_h_share: 'Share', mk_h_growth: '28-day change', mk_h_cpl: 'Cost / lead', mk_h_window: 'Contact window',
+    mk_expand: 'Click a country to see its cities. Origin comes only from what people gave you: a form field, their own phone number or an explicit "I am in…" phrase.',
+    mk_focus: 'Where to focus next', mk_prior_note: 'Scores blend your measured results with the catalogue\'s editorial priority; with few leads the editorial priority counts for more.',
+    mk_measured: 'measured', mk_editorial: 'editorial', mk_leads_n: 'leads', mk_untapped: 'Untapped candidates', mk_untapped_note: 'Priority cities with no leads yet (editorial priority, not a forecast).',
+    mk_empty: 'No lead origins yet.', mk_empty_help: 'Origin is read from a lead\'s phone country code, a country or city form field, or an explicit phrase like "I am in London". Tag ad spend with a country or city on the ROI page to see cost per market.',
+    mk_reason_high_share: 'large share of leads', mk_reason_high_quality: 'strong conversion', mk_reason_growing: 'growing', mk_reason_low_sample: 'few leads so far', mk_reason_editorial_prior: 'mostly editorial priority',
+    roi_market: 'Market (optional)', roi_country: 'Country', roi_city: 'City',
     ws_switch: 'Switch workspace', boot: 'Loading…', app_title: 'DigitalBurj Leads', menu: 'Menu', search: 'Search pages and actions (Ctrl+K)', search_ph: 'Type a page or action…', no_results: 'Nothing matches.',
     nav_overview: 'Overview', nav_leads: 'Leads', nav_tasks: "Today's tasks", nav_agents: 'Agents & queue', nav_inventory: 'Inventory', nav_roi: 'ROI by source', nav_settings: 'Settings',
     act_theme: 'Toggle light / dark theme', act_lang: 'Switch language', act_signout: 'Sign out', signout: 'Sign out', go: 'Go to', action: 'Action',
@@ -35,6 +43,14 @@ export const T = {
     st_role_manager: 'Manager', st_role_agent: 'Agent', st_none: '— none —', st_invited: 'Invitation sent.',
   },
   ar: {
+    nav_markets: 'الأسواق', mk_known: 'عملاء بأصل معروف', mk_top_country: 'أعلى دولة مصدر', mk_top_focus: 'أولى أسواق التركيز', mk_unallocated: 'إنفاق غير موزّع (درهم)',
+    mk_countries: 'من أين يأتي عملاؤك', mk_h_market: 'السوق', mk_h_score: 'متوسط التقييم', mk_h_share: 'الحصة', mk_h_growth: 'التغير خلال 28 يوماً', mk_h_cpl: 'التكلفة / عميل', mk_h_window: 'نافذة التواصل',
+    mk_expand: 'انقر على دولة لعرض مدنها. يُستخرج الأصل فقط مما قدّمه الناس: حقل في نموذج أو رقم هاتفهم أو عبارة صريحة مثل «أنا في…».',
+    mk_focus: 'أين نركّز لاحقاً', mk_prior_note: 'تجمع الدرجات بين نتائجك المقاسة والأولوية التحريرية في الفهرس؛ وعند قلة العملاء تزداد أهمية الأولوية التحريرية.',
+    mk_measured: 'مقاس', mk_editorial: 'تحريري', mk_leads_n: 'عميل', mk_untapped: 'أسواق لم تُستثمر بعد', mk_untapped_note: 'مدن ذات أولوية بلا عملاء بعد (أولوية تحريرية وليست توقعاً).',
+    mk_empty: 'لا توجد أصول عملاء بعد.', mk_empty_help: 'يُقرأ الأصل من رمز دولة هاتف العميل أو حقل دولة أو مدينة في النموذج أو عبارة صريحة مثل «أنا في لندن». صنّف الإنفاق الإعلاني بدولة أو مدينة في صفحة العائد لرؤية التكلفة لكل سوق.',
+    mk_reason_high_share: 'حصة كبيرة من العملاء', mk_reason_high_quality: 'تحويل قوي', mk_reason_growing: 'في نمو', mk_reason_low_sample: 'عدد قليل من العملاء حتى الآن', mk_reason_editorial_prior: 'أولوية تحريرية في الغالب',
+    roi_market: 'السوق (اختياري)', roi_country: 'الدولة', roi_city: 'المدينة',
     ws_switch: 'تبديل مساحة العمل', boot: 'جارٍ التحميل…', app_title: 'ديجيتال برج ليدز', menu: 'القائمة', search: 'ابحث في الصفحات والإجراءات (Ctrl+K)', search_ph: 'اكتب اسم صفحة أو إجراء…', no_results: 'لا نتائج.',
     nav_overview: 'نظرة عامة', nav_leads: 'العملاء المحتملون', nav_tasks: 'مهام اليوم', nav_agents: 'الوكلاء والطابور', nav_inventory: 'المخزون', nav_roi: 'العائد حسب المصدر', nav_settings: 'الإعدادات',
     act_theme: 'تبديل المظهر الفاتح / الداكن', act_lang: 'تبديل اللغة', act_signout: 'تسجيل الخروج', signout: 'تسجيل الخروج', go: 'انتقل إلى', action: 'إجراء',
