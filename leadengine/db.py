@@ -69,6 +69,14 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("leads", "assigned_agent_id", "INTEGER"),
     ("leads", "escalation_level", "INTEGER DEFAULT 0"),
     ("signals", "listing_ref", "TEXT"),
+    ("leads", "origin_country", "TEXT"),
+    ("leads", "origin_city", "TEXT"),
+    ("leads", "origin_basis", "TEXT"),
+    ("signals", "origin_country", "TEXT"),
+    ("signals", "origin_city", "TEXT"),
+    ("signals", "origin_basis", "TEXT"),
+    ("spend", "country", "TEXT"),
+    ("spend", "city", "TEXT"),
 ]
 
 

@@ -5,18 +5,33 @@ import statistics
 from datetime import datetime, timedelta
 
 from .db import DB
+from .markets.cities import COUNTRIES, catalogue, resolve
 from .models import utcnow
 from .scoring import SLA_MINUTES
 
 QUALIFIED = ("HOT", "WARM")
 
 
-def record_spend(db: DB, source: str, campaign: str | None, period: str, amount_aed: float) -> int:
+def record_spend(db: DB, source: str, campaign: str | None, period: str, amount_aed: float,
+                 country: str | None = None, city: str | None = None) -> int:
+    """`country` (ISO2 in the catalogue) and `city` (catalogue name or id) optionally tag the market the spend targeted."""
     if amount_aed < 0:
         raise ValueError("amount_aed must be >= 0")
+    cc, city_id = None, None
+    if city:
+        found = resolve(city) or next((c for c in catalogue() if c.id == city.lower()), None)
+        if not found:
+            raise ValueError(f"unknown city {city!r}")
+        if country and country.upper() != found.country:
+            raise ValueError(f"city {found.name} is in {found.country}, not {country.upper()}")
+        cc, city_id = found.country, found.id
+    elif country:
+        if country.upper() not in COUNTRIES:
+            raise ValueError(f"unknown country {country!r}")
+        cc = country.upper()
     with db.tx() as c:
-        return c.execute("INSERT INTO spend(source,campaign,period,amount_aed) VALUES(?,?,?,?)",
-                         (source, campaign, period, amount_aed)).lastrowid
+        return c.execute("INSERT INTO spend(source,campaign,period,amount_aed,country,city) VALUES(?,?,?,?,?,?)",
+                         (source, campaign, period, amount_aed, cc, city_id)).lastrowid
 
 
 def _ratio(num: float, den: float) -> float | None:

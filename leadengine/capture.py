@@ -18,7 +18,7 @@ CONSENT_TEXT = ("I agree to be contacted about this enquiry and similar properti
 MAX_BODY = 8000
 MAX_KEYS = 5000
 FIELD_CAPS = {"name": 100, "phone": 30, "email": 200, "message": 1000}
-EXTRA_FIELDS = {"looking_to": 40, "area": 80, "budget": 40, "bedrooms": 10}   # allow-listed qualification answers
+EXTRA_FIELDS = {"looking_to": 40, "area": 80, "budget": 40, "bedrooms": 10, "country": 60, "city": 80}   # allow-listed qualification answers
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 

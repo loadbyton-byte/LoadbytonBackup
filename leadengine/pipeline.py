@@ -12,6 +12,7 @@ from .config import Settings
 from .db import DB
 from .distribution import Distribution
 from .identity import identifiers_for, normalize_email, normalize_phone
+from .markets.origin import BASIS_RANK, Origin, resolve_origin
 from .models import Signal, utcnow
 from .nlp.areas import AREAS
 from .nlp.intent import Intent, classify, fill_entities
@@ -59,15 +60,18 @@ class Pipeline:
 
         lead_id, created = self._resolve(sig, ids, it)
         phone, email = normalize_phone(sig.phone), normalize_email(sig.email)
+        hint = lambda k: sig.extra.get(k) if isinstance(sig.extra.get(k), str) else None
+        origin = resolve_origin(sig.text, None, hint("country"), hint("city"))          # phone origin is derived from the lead's phone in recompute
         has_consent = sig.consent_marketing
         sc = score_signal(it, sig.source_type, sig.created_at, bool(phone), bool(email), has_consent)
         with self.db.tx() as c:
             c.execute(
                 "INSERT INTO signals(lead_id,platform,external_id,source_type,text,url,author_handle,created_at,ingested_at,"
-                "label,stage,score,areas,budget_max,campaign,intent,listing_ref) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "label,stage,score,areas,budget_max,campaign,intent,listing_ref,origin_country,origin_city,origin_basis) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (lead_id, sig.platform, sig.external_id, sig.source_type, sig.text[:4000], sig.url, sig.author_handle,
                  sig.created_at.isoformat(), utcnow().isoformat(), it.label, it.stage, sc.total,
-                 json.dumps(it.areas), it.budget_max, sig.campaign, json.dumps(it.to_dict()), sig.listing_ref))
+                 json.dumps(it.areas), it.budget_max, sig.campaign, json.dumps(it.to_dict()), sig.listing_ref,
+                 origin.country if origin else None, origin.city if origin else None, origin.basis if origin else None))
             if sig.consent_marketing:
                 c.execute("UPDATE leads SET consent_status='opted_in', consent_evidence=? WHERE id=?",
                           (json.dumps({"text": sig.consent_text, "platform": sig.platform, "at": utcnow().isoformat()}), lead_id))
@@ -212,6 +216,39 @@ class Pipeline:
                  best.get("purchase_type"), latest["timeline_days"], latest["financing"], best["language"],
                  max(r["created_at"] for r in rows), json.dumps(platforms), json.dumps(best_bd), json.dumps(profile),
                  sla, lead_id))
+        self._write_origin(lead_id)
+
+    def _write_origin(self, lead_id: int) -> bool:
+        """Strongest origin across the lead's signals and its own phone (form > phone > text, earliest wins a tie). True if one is set."""
+        lead = self.db.one("SELECT phone FROM leads WHERE id=?", (lead_id,))
+        if not lead:
+            return False
+        cands: list[Origin] = []
+        for r in self.db.q("SELECT origin_country,origin_city,origin_basis FROM signals WHERE lead_id=? AND origin_basis IS NOT NULL ORDER BY created_at, id", (lead_id,)):
+            cands.append(Origin(r["origin_country"], r["origin_city"], r["origin_basis"]))
+        by_phone = resolve_origin(None, lead["phone"])
+        if by_phone:
+            cands.append(by_phone)
+        best = max(cands, key=lambda o: BASIS_RANK[o.basis], default=None)       # max() keeps the first of equals
+        with self.db.tx() as c:
+            c.execute("UPDATE leads SET origin_country=?,origin_city=?,origin_basis=? WHERE id=?",
+                      (best.country if best else None, best.city if best else None, best.basis if best else None, lead_id))
+        return best is not None
+
+    def backfill_origin(self) -> dict:
+        """Resolve origin for leads that have none (text from stored signals + the lead's phone). Idempotent."""
+        for r in self.db.q("SELECT id,text FROM signals WHERE origin_basis IS NULL"):
+            o = resolve_origin(r["text"], None)
+            if o:
+                with self.db.tx() as c:
+                    c.execute("UPDATE signals SET origin_country=?,origin_city=?,origin_basis=? WHERE id=?", (o.country, o.city, o.basis, r["id"]))
+        updated = unresolved = 0
+        for r in self.db.q("SELECT id FROM leads WHERE origin_basis IS NULL"):
+            if self._write_origin(r["id"]):
+                updated += 1
+            else:
+                unresolved += 1
+        return {"updated": updated, "unresolved": unresolved}
 
     def rescore_all(self) -> int:
         ids = [r["id"] for r in self.db.q("SELECT id FROM leads")]
