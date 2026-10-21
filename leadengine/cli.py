@@ -21,11 +21,19 @@ def main() -> None:
         print(json.dumps(classify(args.text).to_dict(), ensure_ascii=False, indent=2))
         return
     import uvicorn
-    from .api import create_app
-    app = create_app()
-    if args.demo:
-        from .demo import seed_demo
-        print("seeded:", seed_demo(app.state.pipeline))
+    from .config import Settings
+    settings = Settings()
+    if settings.control_db:                                  # platform mode: accounts + one database per workspace
+        from .platform.app import create_platform_app
+        if args.demo:
+            raise SystemExit("--demo is single-tenant only; unset CONTROL_DB, or sign in and seed from the workspace.")
+        app = create_platform_app(settings)
+    else:
+        from .api import create_app
+        app = create_app(settings)
+        if args.demo:
+            from .demo import seed_demo
+            print("seeded:", seed_demo(app.state.pipeline))
     uvicorn.run(app, host=args.host, port=args.port)
 
 
