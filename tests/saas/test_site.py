@@ -9,7 +9,7 @@ from leadengine.platform import site
 
 from .test_app_auth import make_app
 
-PENDING_LINKS = {"/app"}          # pages built in Task 11 (/start /login ...) are listed here only until that task lands
+PENDING_LINKS = set()          # pages built in Task 11 (/start /login ...) are listed here only until that task lands
 
 
 @pytest.fixture()

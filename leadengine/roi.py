@@ -72,6 +72,7 @@ def roi_report(db: DB, now: datetime | None = None, period: str | None = None) -
         paid = total > 0
         out.append({
             "source": source, "leads": s["leads"], "qualified": s["qualified"], "won": s["won"], "spend_aed": total,
+            "sla_ok": s["sla_ok"], "sla_den": s["sla_den"],
             "within_sla_pct": round(100 * s["sla_ok"] / s["sla_den"]) if s["sla_den"] else None,
             "median_first_response_min": round(statistics.median(s["resp"]), 1) if s["resp"] else None,
             "cost_per_lead": _ratio(total, s["leads"]) if paid else None,

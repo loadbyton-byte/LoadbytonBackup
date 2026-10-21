@@ -35,7 +35,8 @@ def test_register_verify_login_logout_by_keyboard_only(live, browser_page):
     pg.press("input[name=password]", "Enter")
     pg.wait_for_url("**/app")
     assert [c for c in pg.context.cookies() if c["name"] == "dbl_session" and c["httpOnly"]]
-    assert not [p for p in pg.problems if "404" not in p and not p.endswith("/app")]       # /app itself lands in Task 12
+    pg.wait_for_selector("#view h1")
+    assert pg.problems == []
 
 
 def test_forgot_then_reset_in_the_browser(live, browser_page):

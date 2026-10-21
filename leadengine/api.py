@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hmac
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from .calculators import deal_costs, max_loan, mortgage_payment, rental_yield
 from .capture import MAX_BODY, RateLimiter, handle_capture, origin_allowed, widget_js
+from .compliance import GST
 from .config import Settings
 from .connectors import ConnectorRegistry
 from .connectors.apify import ApifyConnector
@@ -508,6 +509,31 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     def stats(_=Depends(auth)):
         tiers = {r["tier"]: r["n"] for r in db.q("SELECT tier, COUNT(*) n FROM leads GROUP BY tier")}
         return {"tiers": tiers, "counters": {r["key"]: r["value"] for r in db.q("SELECT * FROM stats")}}
+
+    @app.get("/overview")
+    def overview(_=Depends(auth)):
+        """KPI numbers for the dashboard Overview: today's intake, tier mix, overdue replies, status counts, a 14-day trend and onboarding flags."""
+        now = utcnow().astimezone(GST)
+        today = now.date()
+        days = [today - timedelta(days=i) for i in range(13, -1, -1)]
+        per_day = {d.isoformat(): 0 for d in days}
+        for r in db.q("SELECT first_seen FROM leads WHERE first_seen >= ?", ((now - timedelta(days=15)).astimezone(utcnow().tzinfo).isoformat(),)):
+            d = datetime.fromisoformat(r["first_seen"]).astimezone(GST).date().isoformat()
+            if d in per_day:
+                per_day[d] += 1
+        tiers = {r["tier"]: r["n"] for r in db.q("SELECT tier, COUNT(*) n FROM leads GROUP BY tier")}
+        by_status = {k: 0 for k in ("new", "contacted", "qualified", "viewing", "won", "lost")}
+        for r in db.q("SELECT status, COUNT(*) n FROM leads GROUP BY status"):
+            if r["status"] in by_status:
+                by_status[r["status"]] = r["n"]
+        overdue = db.one("SELECT COUNT(*) n FROM leads WHERE status='new' AND sla_due_at IS NOT NULL AND sla_due_at < ?", (utcnow().isoformat(),))["n"]
+        rows = roi_report(db)
+        den, ok = sum(r["sla_den"] for r in rows), sum(r["sla_ok"] for r in rows)
+        return {"new_today": per_day[today.isoformat()], "hot": tiers.get("HOT", 0), "warm": tiers.get("WARM", 0), "overdue": overdue,
+                "within_sla_pct": round(100 * ok / den) if den else None, "by_status": by_status,
+                "trend": [{"date": d, "leads": n} for d, n in per_day.items()],
+                "onboarding": {"agents": bool(db.one("SELECT 1 FROM agents LIMIT 1")), "inventory": bool(db.one("SELECT 1 FROM projects LIMIT 1")),
+                               "widget_origin": bool(s.capture_origins), "whatsapp": bool(s.whatsapp_phone_id or s.whatsapp_token)}}
 
     @app.post("/maintenance/purge")
     def purge(_=Depends(auth)):

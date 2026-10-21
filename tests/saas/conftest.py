@@ -100,6 +100,8 @@ def live(tmp_path_factory):
     settings = Settings(db_path=":memory:", control_db=":memory:", data_dir=str(tmp_path_factory.mktemp("live")), encryption_key=generate_key(),
                         base_url=url, dev_insecure_cookies=True, contact_email="hello@example.ae")
     mailer = ConsoleMailer()
+    from leadengine.platform import accounts as accounts_mod
+    old_limit, accounts_mod.REGISTER_LIMIT = accounts_mod.REGISTER_LIMIT, 10_000     # many workspaces are created from one address
     app = create_platform_app(settings, mailer, inline_mail=True)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     threading.Thread(target=server.run, daemon=True).start()
@@ -109,6 +111,7 @@ def live(tmp_path_factory):
         _t.sleep(0.05)
     yield Live(url, app, mailer)
     server.should_exit = True
+    accounts_mod.REGISTER_LIMIT = old_limit
 
 
 @pytest.fixture()

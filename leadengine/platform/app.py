@@ -24,6 +24,7 @@ from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 
 from ..config import Settings
+from ..api import DASH
 from .accounts import SESSION_ABSOLUTE_S, AccountError, AccountService, SessionInfo, csrf_for
 from .control import ControlDB
 from .mailer import Mailer, make_mailer
@@ -275,7 +276,6 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
     app = FastAPI(title="DigitalBurj Leads", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings, app.state.control, app.state.tenants, app.state.accounts = s, control, tenants, accounts
 
-    from ..api import DASH
     app.mount("/static", StaticFiles(directory=DASH.parent), name="static")
 
     app.mount("/site-static", StaticFiles(directory=site.SITE_DIR / "static"), name="site-static")
@@ -645,6 +645,76 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
             bad = e.code == "invalid_invite"
             return auth_response(request, "auth_invite", (lambda t, st: "") if bad else form, 400, err_text(request, ERR.get(e.code, "auth.err.generic")))
         return RedirectResponse("/login", 303)
+
+    # ------------------------------------------------------------------ workspace settings, team and the dashboard shell
+    PROFILE_KEYS = ("agency_name", "agent_name", "brn", "trakheesi", "whatsapp_phone_id")
+    SECRET_KEYS = ("meta_verify_token", "meta_app_secret", "meta_page_token", "whatsapp_token", "form_webhook_secret")
+    ORIGIN_RE = re.compile(r"^https?://[A-Za-z0-9.-]{1,200}(:\d{1,5})?$")
+
+    def owner_only(info: SessionInfo) -> None:
+        if info.role != "owner":
+            raise ApiError(403, "forbidden", "Only the workspace owner can do that.")
+
+    @app.get("/auth/settings")
+    def get_settings(request: Request):
+        info, _ = current(request)
+        owner_only(info)
+        cfg = tenants.settings_for(info.tenant_id)
+        key = control.one("SELECT public_key FROM tenants WHERE id=?", (info.tenant_id,))["public_key"]
+        url = f"{s.base_url.rstrip('/')}/t/{key}/widget.js"
+        have = tenants.public_settings(info.tenant_id)
+        return _json(200, {**{k: getattr(cfg, k) for k in PROFILE_KEYS}, "capture_origins": list(cfg.capture_origins),
+                           "secrets": {k: bool(have.get(k)) for k in SECRET_KEYS},
+                           "embed": {"widget_url": url, "snippet": f'<div id="digitalburj-leads"></div>\n<script src="{url}" data-source="website" defer></script>'}})
+
+    @app.put("/auth/settings")
+    async def put_settings(request: Request):
+        info, _ = current(request, csrf=True)
+        owner_only(info)
+        d = await body(request)
+        allowed_keys = set(PROFILE_KEYS) | set(SECRET_KEYS) | {"capture_origins"}
+        if set(d) - allowed_keys:
+            raise ApiError(400, "invalid_setting", "Unknown or protected setting: " + ", ".join(sorted(set(d) - allowed_keys)))
+        updates: dict = {}
+        for k, v in d.items():
+            if k == "capture_origins":
+                if not isinstance(v, list) or len(v) > 20 or not all(isinstance(o, str) and ORIGIN_RE.match(o) for o in v):
+                    raise ApiError(400, "invalid_setting", "capture_origins must be a list of origins like https://example.com")
+                updates[k] = [o.lower() for o in v]
+            elif not isinstance(v, str) or len(v) > (300 if k in SECRET_KEYS else 120):
+                raise ApiError(400, "invalid_setting", f"{k} must be text of at most {300 if k in SECRET_KEYS else 120} characters.")
+            elif k in SECRET_KEYS and not v.strip():
+                continue                                          # an empty secret field means "leave unchanged"
+            elif k == "agency_name" and not v.strip():
+                raise ApiError(400, "invalid_setting", "agency_name cannot be empty.")
+            else:
+                updates[k] = v.strip()
+        for k, v in updates.items():
+            tenants.set_setting(info.tenant_id, k, v)
+        tenants.evict(info.tenant_id)                             # the workspace app is rebuilt with the new settings on its next request
+        control.audit("settings_updated", user_id=info.user_id, tenant_id=info.tenant_id, fields=sorted(updates))
+        return _json(200, {"ok": True})
+
+    @app.get("/auth/team")
+    def team(request: Request):
+        info, _ = current(request)
+        owner_only(info)
+        members = control.q("SELECT u.email, u.name, m.role, m.agent_id FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.tenant_id=? ORDER BY m.rowid",
+                            (info.tenant_id,))
+        invites = control.q("SELECT email, role, expires_at FROM invites WHERE tenant_id=? AND accepted_at IS NULL AND expires_at>? ORDER BY expires_at",
+                            (info.tenant_id, accounts.now()))
+        return _json(200, {"members": [dict(r) for r in members], "invites": [dict(r) for r in invites]})
+
+    app.mount("/app-assets", StaticFiles(directory=DASH.parent / "app"), name="app-assets")
+    APP_CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; "
+               "base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+
+    @app.get("/app", include_in_schema=False)
+    def dashboard(request: Request):
+        raw = session_cookie(request.headers.get("cookie", ""))
+        if not raw or accounts.resolve_session(raw, touch=False) is None:
+            return RedirectResponse("/login?next=%2Fapp", 303)
+        return HTMLResponse((DASH.parent / "app.html").read_text(encoding="utf-8"), headers={"Content-Security-Policy": APP_CSP, "Cache-Control": "no-store"})
 
     @app.get("/healthz", include_in_schema=False)
     def healthz():
