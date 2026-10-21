@@ -24,6 +24,7 @@ from .distribution import canon_areas
 from .models import Signal, utcnow
 from .inventory import import_projects_csv, match as match_projects
 from .markets.cities import search as search_cities, stats as city_stats
+from .markets.intel import market_report
 from .nba import next_actions, todays_tasks
 from .outreach import draft
 from .pipeline import Pipeline
@@ -105,6 +106,8 @@ class SpendIn(BaseModel):
     campaign: str | None = None
     period: str
     amount_aed: float
+    country: str | None = Field(None, max_length=60)
+    city: str | None = Field(None, max_length=80)
 
 
 class PortalEmailIn(BaseModel):
@@ -470,6 +473,26 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
                        lang: str | None = None, limit: int = Query(100, ge=1, le=500), _=Depends(auth)):
         return [c.to_dict() for c in search_cities(q, country, region, tier, lang, limit)]
 
+    @app.get("/markets/intel")
+    def markets_intel(period: str | None = None, limit: int = Query(25, ge=1, le=100), _=Depends(auth)):
+        try:
+            return market_report(db, period=period, limit=limit)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
+    @app.get("/markets/intel/{country}")
+    def markets_intel_country(country: str, _=Depends(auth)):
+        cc = country.upper()
+        rep = market_report(db, limit=100)
+        row = next((r for r in rep["countries"] if r["id"] == cc), None)
+        if not row:
+            raise HTTPException(404, "no leads or spend for that country")
+        return {"country": row, "cities": [c for c in rep["cities"] if c["country"] == cc]}
+
+    @app.post("/markets/backfill-origin")
+    def markets_backfill(_=Depends(auth)):
+        return pipe.backfill_origin()
+
     @app.get("/markets/summary")
     def markets_summary(_=Depends(auth)):
         return city_stats()
@@ -497,9 +520,9 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     @app.post("/spend")
     def spend(p: SpendIn, _=Depends(auth)):
         try:
-            return {"id": record_spend(db, p.source, p.campaign, p.period, p.amount_aed)}
+            return {"id": record_spend(db, p.source, p.campaign, p.period, p.amount_aed, p.country, p.city)}
         except ValueError as e:
-            raise HTTPException(400, str(e))
+            raise HTTPException(422 if ("country" in str(e) or "city" in str(e)) else 400, str(e))
 
     @app.get("/roi")
     def roi(period: str | None = None, _=Depends(auth)):

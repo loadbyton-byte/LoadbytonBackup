@@ -28,6 +28,7 @@ _RULES: list[tuple[frozenset[str], re.Pattern[str], str]] = [
     (frozenset({"DELETE"}), re.compile(r"^/leads/" + _ID + "$"), "owner"),
     (frozenset({"POST"}), re.compile(r"^/maintenance/purge$"), "owner"),
     (frozenset({"POST"}), re.compile(r"^/demo/seed$"), "owner"),
+    (frozenset({"POST"}), re.compile(r"^/markets/backfill-origin$"), "owner"),
     # agent-level: only the leads they work (row scoping is enforced by the dispatcher) and their day
     (frozenset({"GET"}), re.compile(r"^/leads$"), "agent"),
     (frozenset({"GET"}), re.compile(r"^/leads/" + _ID + r"(/(matches|next-actions|deal-sheet))?$"), "agent"),

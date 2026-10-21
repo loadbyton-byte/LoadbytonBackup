@@ -40,7 +40,7 @@ def test_every_tenant_route_is_scoped(two):
         if not methods or path in OPEN_ROUTES or path.startswith("/webhooks"):
             continue
         for method in sorted(methods - {"HEAD", "OPTIONS"}):
-            url = (path.replace("{lead_id}", "1").replace("{agent_id}", "1").replace("{name}", "reddit").replace("{platform}", "tiktok"))
+            url = (path.replace("{lead_id}", "1").replace("{agent_id}", "1").replace("{name}", "reddit").replace("{country}", "GB").replace("{platform}", "tiktok"))
             if not allowed("owner", method, url):
                 continue
             seen += 1
