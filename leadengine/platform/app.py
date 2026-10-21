@@ -13,6 +13,7 @@ import random
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import parse_qsl, urlencode
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -192,9 +193,46 @@ class Dispatcher:
         try:
             with self.tenants.lease(tid) as tapp:
                 fwd = self._forward_scope(scope, path, {b"cookie", b"x-api-key", b"x-csrf-token"}, "GET" if head else None)
+                if role == "agent":
+                    scoped = await self._scope_agent(fwd, receive, tid, info.agent_id, method, path)
+                    if isinstance(scoped, JSONResponse):
+                        return await self._reply(scoped, scope, receive, send)
+                    fwd, receive = scoped
                 await tapp(fwd, receive, self._hardened(send, no_store=True, head=head))
         except KeyError:
             await self._reply(_not_found(), scope, receive, send)
+
+    async def _scope_agent(self, fwd: dict, receive, tid: int, agent_id: int | None, method: str, path: str):
+        """Row-level scoping for the agent role: own leads only, own calendar, own tasks. Client-supplied agent filters never survive."""
+        me = agent_id if agent_id is not None else -1                       # -1 matches no agent: an unlinked account sees nothing
+        qs = [(k, v) for k, v in parse_qsl(fwd.get("query_string", b"").decode("latin-1"), keep_blank_values=True)
+              if k not in ("agent_id", "assigned_agent_id")]
+        if path == "/leads":
+            qs.append(("assigned_agent_id", str(me)))
+        elif path in ("/viewings", "/tasks/today"):
+            qs.append(("agent_id", str(me)))
+        fwd = {**fwd, "query_string": urlencode(qs).encode()}
+        m = re.match(r"^/leads/(\d+)(/.*)?$", path)
+        if not m:
+            return fwd, receive
+        row = self.tenants.db_for(tid).one("SELECT assigned_agent_id FROM leads WHERE id=?", (int(m.group(1)),))
+        if not row or agent_id is None or row["assigned_agent_id"] != agent_id:
+            return _json(403, {"error": "forbidden", "message": "That lead is not assigned to you."})
+        sub = m.group(2) or ""
+        if method == "POST" and sub in ("/status", "/viewings"):
+            body = await _read_body(receive, LIMIT_OTHER)
+            try:
+                data = json.loads(body or b"{}")
+            except ValueError:
+                data = None
+            if not isinstance(data, dict):
+                return _json(400, {"error": "invalid_json", "message": "Invalid JSON."})
+            data.pop("assigned_to", None)                                   # agents cannot reassign
+            if sub == "/viewings":
+                data["agent_id"] = agent_id                                 # ...or book someone else's calendar
+            receive = _replay(json.dumps(data).encode(), receive)
+            fwd = {**fwd, "headers": [(k, v) for k, v in fwd["headers"] if k.lower() != b"content-length"]}
+        return fwd, receive
 
     def _session(self, headers: dict) -> SessionInfo | None:
         raw = session_cookie(headers.get(b"cookie", b"").decode("latin-1"))

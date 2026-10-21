@@ -225,8 +225,11 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     # ---------------------------------------------------------------- leads
     @app.get("/leads")
     def leads(tier: str | None = None, label: str | None = None, area: str | None = None, min_score: int = 0,
-              status: str | None = None, overdue: bool = False, limit: int = Query(100, le=500), _=Depends(auth)):
+              status: str | None = None, overdue: bool = False, assigned_agent_id: int | None = None, limit: int = Query(100, le=500), _=Depends(auth)):
         where, args = ["score >= ?"], [min_score]
+        if assigned_agent_id is not None:
+            where.append("assigned_agent_id = ?")
+            args.append(assigned_agent_id)
         for col, val in (("tier", tier), ("label", label), ("primary_area", area), ("status", status)):
             if val:
                 where.append(f"{col} = ?")
