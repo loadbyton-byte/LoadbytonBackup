@@ -103,7 +103,7 @@ def summary(tool: str, inputs: dict, result: dict) -> tuple[str, dict]:
     parts = ", ".join(f"{k} {inputs[k]:,.0f}" if k not in ("rate", "years", "vacancy") else f"{k} {inputs[k]:g}" for k in FIELDS[tool])
     extra: dict[str, str] = {}
     if tool == "affordability":
-        extra["budget"] = f"AED {result['ltv_capped_price']:.0f}"
+        extra["budget"] = f"AED {(result['ltv_capped_price'] or result['max_price']):.0f}"      # no down payment makes the LTV cap 0: fall back to the DBR price
     elif tool in ("costs", "yield"):
         extra["budget"] = f"AED {inputs['price']:.0f}"
     return f"Used the {label} (AED): {parts}.", extra

@@ -28,12 +28,11 @@ class WebSessions:
 
     def start(self, lang: str, ip: str, now: datetime | None = None) -> str:
         now = now or _now()
-        ip_hash = _h("ip:" + (ip or "?"))                       # rate limiting happens in the page layer (a short-window limiter), not by counting rows
         raw = secrets.token_urlsafe(32)
-        state = {"step": "intent", "answers": {}, "retries": {}, "lang": lang, "phase": "qa"}
+        state = {"step": "intent", "answers": {}, "retries": {}, "lang": lang, "phase": "qa", "seq": 0}
         with self.db.tx() as c:
-            c.execute("INSERT INTO web_sessions(token_hash,state,lang,ip_hash,created_at,expires_at) VALUES(?,?,?,?,?,?)",
-                      (_h(raw), json.dumps(state), lang, ip_hash, now.isoformat(), (now + TTL).isoformat()))
+            c.execute("INSERT INTO web_sessions(token_hash,state,lang,created_at,expires_at) VALUES(?,?,?,?,?)",     # no IP is stored: rate limiting lives in the page layer
+                      (_h(raw), json.dumps(state), lang, now.isoformat(), (now + TTL).isoformat()))
         return raw
 
     def load(self, token, now: datetime | None = None) -> dict | None:

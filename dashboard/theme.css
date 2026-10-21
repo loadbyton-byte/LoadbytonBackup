@@ -47,7 +47,7 @@ tr.row{cursor:pointer}tr.row:hover{background:color-mix(in srgb,var(--signal) 6%
 .up{color:var(--hot);font-weight:600}.down{color:var(--nur)}h2{font-size:14px;margin:0 0 8px}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--text);max-width:760px;width:92%;padding:18px}
 dialog::backdrop{background:#0f1714aa}
-pre{white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:8px;border:1px solid var(--line);margin:6px 0;font:inherit}
+pre{overflow-wrap:anywhere;white-space:pre-wrap;background:var(--bg);padding:10px;border-radius:8px;border:1px solid var(--line);margin:6px 0;font:inherit}
 .bd{display:grid;grid-template-columns:130px 1fr 38px;gap:6px;align-items:center;margin:3px 0}
 .ok{color:var(--okc);font-weight:600}.no{color:var(--hot);font-weight:600}.ar{direction:rtl;text-align:right}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:700px){.grid2{grid-template-columns:1fr}}

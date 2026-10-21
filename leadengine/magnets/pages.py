@@ -119,7 +119,7 @@ class Pub:
         st = site.strings(lang)
         hidden = "".join(f'<input type="hidden" name="{f}" value="{esc(forms.raw(inputs[f]))}">' for f in forms.FIELDS[tool])
         return (f'<form class="form" method="post" action="{self.prefix}/p/lead"><input type="hidden" name="lang" value="{lang}"><input type="hidden" name="tool" value="{tool}">{hidden}'
-                f'<div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>'
+                f'<div class="hp" aria-hidden="true"><label>Website<input type="text" name="hp_url" tabindex="-1" autocomplete="off"></label></div>'
                 f'<div><label for="l-name">{esc(st["pub.lead.name"])}</label><input id="l-name" name="name" type="text" maxlength="100" autocomplete="name" value="{esc(name)}"></div>'
                 f'<div><label for="l-phone">{esc(st["pub.lead.phone"])}</label><input id="l-phone" name="phone" type="tel" maxlength="30" autocomplete="tel" value="{esc(phone)}"></div>'
                 f'<div><label for="l-email">{esc(st["pub.lead.email"])}</label><input id="l-email" name="email" type="email" maxlength="200" autocomplete="email" value="{esc(email)}"></div>'
@@ -156,7 +156,7 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
         tool = data.get("tool", "")
         if tool not in forms.TOOLS:
             return pub.error(request, lang, "pub.err.notfound", 404)
-        if data.get("website"):                                    # honeypot: bots fill hidden fields; look successful, store nothing
+        if data.get("hp_url"):                                    # honeypot: bots fill hidden fields; look successful, store nothing
             if limiter.hit(ip):
                 return pub.error(request, lang, "pub.err.rate", 429)
             return thanks(request, lang)
@@ -245,6 +245,7 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
         step = state["step"]
         form = (f'<form class="form" method="post" action="{pub.prefix}/p/concierge"><input type="hidden" name="lang" value="{lang}">'
                 f'<input type="hidden" name="token" value="{esc(token)}"><input type="hidden" name="step" value="{esc(step)}">'
+                f'<input type="hidden" name="seq" value="{int(state.get("seq", 0))}">'
                 f'<p class="question" id="q">{esc(question(lang, state, retry))}</p>'
                 f'<label for="c-answer">{esc(st["pub.c.answer"])}</label><input id="c-answer" name="answer" type="text" maxlength="300" autocomplete="off" aria-describedby="q" required>'
                 f'<p class="mute">{esc(st["pub.c.hint"])}</p><button class="btn" type="submit">{esc(st["pub.c.next"])}</button></form>')
@@ -256,7 +257,7 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
         v = values or {}
         form = (f'<h2>{esc(st["pub.c.contact_h"])}</h2><form class="form" method="post" action="{pub.prefix}/p/concierge"><input type="hidden" name="lang" value="{lang}">'
                 f'<input type="hidden" name="token" value="{esc(token)}"><input type="hidden" name="step" value="contact">'
-                f'<div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>'
+                f'<div class="hp" aria-hidden="true"><label>Website<input type="text" name="hp_url" tabindex="-1" autocomplete="off"></label></div>'
                 f'<div><label for="c-name">{esc(st["pub.lead.name"])}</label><input id="c-name" name="name" type="text" maxlength="100" autocomplete="name" value="{esc(v.get("name", ""))}"></div>'
                 f'<div><label for="c-phone">{esc(st["pub.lead.phone"])}</label><input id="c-phone" name="phone" type="tel" maxlength="30" autocomplete="tel" value="{esc(v.get("phone", ""))}"></div>'
                 f'<div><label for="c-email">{esc(st["pub.lead.email"])}</label><input id="c-email" name="email" type="email" maxlength="200" autocomplete="email" value="{esc(v.get("email", ""))}"></div>'
@@ -311,15 +312,17 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
         if state is None:
             return restart_page(request, lang)
         if state.get("phase") == "contact":
+            if data.get("step") != "contact":                      # a replayed consent answer: show the contact form again
+                return contact_page(request, lang, token)
             return contact_submit(request, lang, token, state, data)
         if qualify.is_stop(answer):                                # STOP works from any step, even a stale tab
             sessions.delete(token)
             pub.bump("concierge_declined")
             return declined_page(request, lang)
-        if data.get("step") != state["step"]:                      # a replayed or out-of-order step: show where the chat really is
-            return qa_page(request, lang, token, state)
+        if data.get("step") != state["step"] or str(data.get("seq", state.get("seq", 0))) != str(state.get("seq", 0)):
+            return qa_page(request, lang, token, state)             # replayed or out-of-order submit: show where the chat really is, advance nothing
         new, reply, done = qualify.advance(state, answer)
-        new["lang"], new["phase"] = lang, "qa"
+        new["lang"], new["phase"], new["seq"] = lang, "qa", int(state.get("seq", 0)) + 1
         if done:
             if new["answers"].get("consent"):
                 new["phase"] = "contact"
@@ -336,7 +339,7 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
 
     def contact_submit(request, lang, token, state, data):
         st = site.strings(lang)
-        if data.get("website"):                                      # honeypot
+        if data.get("hp_url"):                                      # honeypot
             sessions.delete(token)
             if limiter.hit(client_ip(request)):
                 return pub.error(request, lang, "pub.err.rate", 429)

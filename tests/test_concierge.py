@@ -18,7 +18,8 @@ def fields(html: str) -> dict:
 
 
 def step(c, state, answer, lang="en", **extra):
-    r = c.post("/p/concierge", data={"lang": lang, "token": state["token"], "step": state["step"], "answer": answer, **extra})
+    seq = {"seq": state["seq"]} if "seq" in state else {}
+    r = c.post("/p/concierge", data={"lang": lang, "token": state["token"], "step": state["step"], "answer": answer, **seq, **extra})
     return r, fields(r.text)
 
 
@@ -139,7 +140,7 @@ def test_contact_step_validation_and_cannot_be_bypassed():
         r, f = step(c, f, a)
     r = c.post("/p/concierge", data={"lang": "en", "token": f["token"], "step": "contact", "name": "X", "phone": "12", "email": "bad"})
     assert r.status_code == 422 and "valid phone number" in r.text and leads(c) == []
-    r = c.post("/p/concierge", data={"lang": "en", "token": f["token"], "step": "contact", "name": "X", "phone": "0501234567", "website": "spam"})
+    r = c.post("/p/concierge", data={"lang": "en", "token": f["token"], "step": "contact", "name": "X", "phone": "0501234567", "hp_url": "spam"})
     assert r.status_code == 200 and leads(c) == []                                    # honeypot looks successful, stores nothing
 
 
@@ -160,3 +161,44 @@ def test_purge_deletes_only_expired_sessions():
     c.app.state.db.conn.commit()
     assert c.app.state.pipeline.compliance.purge_expired()["sessions_deleted"] == 1
     assert c.app.state.db.one("SELECT COUNT(*) n FROM web_sessions")["n"] == 1
+
+
+def test_resubmitting_a_step_does_not_advance_twice():
+    c = client()
+    _, f = start(c)
+    r1, f1 = step(c, f, "I want to buy")
+    assert f1["step"] == "area"
+    r2, f2 = step(c, f, "I want to buy")                      # refresh / Back-and-resubmit of the same form
+    assert r2.status_code == 200 and f2["step"] == "area" and f2["seq"] == f1["seq"]
+    r3, f3 = step(c, f1, "xyzzy")                              # nonsense on a normal step still goes through retry logic once
+    assert r3.status_code == 200
+
+
+def test_replay_of_the_retry_step_does_not_skip_the_question():
+    c = client()
+    _, f = start(c)
+    _, f = step(c, f, "I want to buy")
+    old = dict(f)
+    r, f = step(c, f, "")                                      # blank answer -> same question with the retry prefix
+    assert f["step"] == old["step"]
+    r2, f2 = step(c, old, "")                                  # the replay of the first blank must not burn the retry
+    assert f2["step"] == old["step"] and f2["seq"] == f["seq"]
+
+
+def test_refreshing_after_consent_shows_the_contact_page_not_an_error():
+    c = client()
+    _, f = start(c)
+    for answer in ("buy", "Dubai Marina", "2M", "this month"):
+        _, f = step(c, f, answer)
+    r, f2 = step(c, f, "yes")
+    assert "Last step" in r.text
+    r2, _ = step(c, f, "yes")                                  # replay the consent submit
+    assert r2.status_code == 200 and "Last step" in r2.text
+
+
+def test_no_ip_hash_is_stored():
+    c = client()
+    _, f = start(c)
+    step(c, f, "I want to buy")
+    rows = c.app.state.db.q("SELECT ip_hash FROM web_sessions")
+    assert rows and all(r["ip_hash"] is None for r in rows)

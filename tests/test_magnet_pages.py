@@ -14,7 +14,7 @@ from leadengine.platform import site
 AFF = {"income": "30000", "debts": "5000", "down": "200000", "years": "25", "rate": "4.5"}
 VALID = {"affordability": AFF, "costs": {"price": "2000000", "loan": "1500000"}, "yield": {"price": "1500000", "rent": "100000", "service": "12000", "vacancy": "5"},
          "mortgage": {"principal": "1500000", "rate": "4.5", "years": "25"}}
-CONTACT = {"name": "Sara Buyer", "phone": "0501234567", "email": "", "consent": "1", "website": ""}
+CONTACT = {"name": "Sara Buyer", "phone": "0501234567", "email": "", "consent": "1", "hp_url": ""}
 
 
 def client(**kw):
@@ -91,7 +91,7 @@ def test_lead_requires_consent_and_contact_and_honeypot():
     assert lead_post(c, consent="").status_code == 422 and c.get("/leads").json() == []
     assert lead_post(c, phone="", email="").status_code == 422 and c.get("/leads").json() == []
     assert lead_post(c, phone="12", email="nope").status_code == 422
-    r = lead_post(c, website="http://spam.example")
+    r = lead_post(c, hp_url="http://spam.example")
     assert r.status_code == 200 and "Thank you" in r.text and c.get("/leads").json() == []
 
 
@@ -138,7 +138,7 @@ def test_duplicate_and_suppressed_look_identical():
 
 def test_rate_limit_and_body_limit():
     c = client()
-    codes = [lead_post(c, website="x").status_code for _ in range(6)]
+    codes = [lead_post(c, hp_url="x").status_code for _ in range(6)]
     assert codes[:5] == [200] * 5 and codes[5] == 429 and "few minutes" in lead_post(c).text
     c2 = client()
     assert c2.post("/p/costs", content=b"price=" + b"1" * 9000, headers={"content-type": "application/x-www-form-urlencoded"}).status_code == 413

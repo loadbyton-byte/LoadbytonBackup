@@ -1,5 +1,5 @@
-@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:200 800;font-display:swap;src:url(/static/fonts/plus-jakarta-sans-latin-wght-normal.woff2) format('woff2')}
-@font-face{font-family:'Instrument Sans';font-style:normal;font-weight:400 700;font-display:swap;src:url(/static/fonts/instrument-sans-latin-wght-normal.woff2) format('woff2')}
+@font-face{font-family:'Plus Jakarta Sans';font-style:normal;font-weight:200 800;font-display:swap;src:url(../static/fonts/plus-jakarta-sans-latin-wght-normal.woff2) format('woff2')}
+@font-face{font-family:'Instrument Sans';font-style:normal;font-weight:400 700;font-display:swap;src:url(../static/fonts/instrument-sans-latin-wght-normal.woff2) format('woff2')}
 :root{--ink:#0f1714;--paper:#f6f5f1;--signal:#f23a1d;--bg:var(--paper);--card:#fff;--text:var(--ink);--line:#cfcdc4;--mute:#5d6560;--btn:var(--ink);--btn-text:var(--paper);--link:#b8200a;--notice:#fff4e0;--notice-line:#c98a1d;--err:#7a1608;--errbg:#fde8e4;--ok:#0e5a30;--okbg:#e6f6ec;
 --font-head:'Plus Jakarta Sans',system-ui,sans-serif;--font-ui:'Instrument Sans',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1714;--card:#16201c;--text:#f6f5f1;--line:#3a4640;--mute:#a9b3ae;--btn:#f6f5f1;--btn-text:#0f1714;--link:#ff8a5c;--notice:#2b2415;--notice-line:#9a7424;--err:#ffb4a6;--errbg:#3a1a14;--ok:#9be0b8;--okbg:#13291c}}

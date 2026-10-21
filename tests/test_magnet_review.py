@@ -158,3 +158,13 @@ def test_this_month_is_not_matched_in_the_past(phrase):
     assert parse_timeline(normalize(phrase)) is None
     assert parse_timeline(normalize("earlier this month I sold my flat")) is None
     assert parse_timeline(normalize("this month")) == 30
+
+
+def test_affordability_lead_budget_falls_back_when_ltv_cap_is_zero():
+    from leadengine.config import Rates
+    from leadengine.magnets import forms
+    inputs = {"income": 30000.0, "debts": 0.0, "down": 0.0, "years": 25, "rate": 4.5}
+    result, err = forms.compute("affordability", inputs, Rates())
+    assert err is None and result["ltv_capped_price"] == 0 and result["max_price"] > 0
+    _, extra = forms.summary("affordability", inputs, result)
+    assert extra["budget"] == f"AED {result['max_price']:.0f}"                 # never "AED 0"

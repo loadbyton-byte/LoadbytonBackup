@@ -679,8 +679,9 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
         have = tenants.public_settings(info.tenant_id)
         base_pub = f"{s.base_url.rstrip('/')}/t/{key}/p"
         pages = [{"tool": tool, "url": f"{base_pub}/{tool}" if tool else base_pub,
-                  "iframe": f'<iframe src="{base_pub}/{tool}" title="{tool}" loading="lazy" width="100%" height="640"></iframe>'}
-                 for tool in ("affordability", "costs", "yield", "mortgage", "concierge")]
+                  "iframe": f'<iframe src="{base_pub}/{tool}" title="{label}" loading="lazy" width="100%" height="640"></iframe>'}
+                 for tool, label in (("affordability", "Mortgage affordability calculator"), ("costs", "Property buying costs calculator"),
+                                     ("yield", "Rental yield calculator"), ("mortgage", "Mortgage payment calculator"), ("concierge", "Property enquiry assistant"))]
         return _json(200, {**{k: getattr(cfg, k) for k in PROFILE_KEYS}, "capture_origins": list(cfg.capture_origins), "public_pages": pages,
                            "secrets": {k: bool(have.get(k)) for k in SECRET_KEYS},
                            "embed": {"widget_url": url, "snippet": f'<div id="digitalburj-leads"></div>\n<script src="{url}" data-source="website" defer></script>'}})
