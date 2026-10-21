@@ -37,7 +37,7 @@ def test_calling_codes_cover_catalogue():
 
 
 @pytest.mark.parametrize("text", ["i am in London", "I'm in London looking for a villa", "we're in London", "I'm based in London", "I am living in London",
-                                  "currently in London", "moving from London", "relocating from London", "originally from London",
+                                  "I'm currently in London", "moving from London", "relocating from London", "I'm originally from London",
                                   "I'm from London", "writing from London", "Hello! I'm in London, budget AED 2M"])
 def test_self_location_phrases_en(text):
     assert resolve_origin(text, None) == Origin("GB", LONDON, "text")

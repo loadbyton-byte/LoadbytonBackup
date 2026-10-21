@@ -5,21 +5,26 @@ const growth = v => v === null || v === undefined ? '—' : `<span class="${v > 
 const money = v => v === null || v === undefined ? '—' : Number(v).toLocaleString();
 
 function row(r, cls = '') {
-  return `<tr class="${cls}" data-id="${esc(r.id)}" data-country="${esc(r.country)}"><td><b>${esc(r.name)}</b>${r.top_city ? `<br><span class="mute">${esc(r.top_city)}</span>` : ''}</td>
-    <td>${Number(r.leads)}</td><td>${Number(r.qualified)}</td><td>${Number(r.won)}</td><td>${num(r.avg_score)}</td><td>${Number(r.share_pct)}%</td><td>${growth(r.growth_pct)}</td>
-    <td>${money(r.spend_aed)}</td><td>${num(r.cost_per_lead)}</td><td class="mute">${esc(r.contact_window || '—')}</td></tr>`;
+  return `<tr class="${cls}" data-id="${esc(r.id)}" data-country="${esc(r.country)}"><td>${cls.includes('mk-country') ? `<button type="button" class="ghost small mk-toggle" aria-expanded="false" aria-label="${esc(t('mk_toggle'))}: ${esc(r.name)}">▸</button> ` : ''}<b>${esc(r.name)}</b>${r.top_city ? `<br><span class="mute">${esc(r.top_city)}</span>` : ''}</td>
+    <td>${Number(r.leads)}</td><td>${Number(r.qualified)}</td><td>${Number(r.won)}</td><td>${esc(num(r.avg_score))}</td><td>${Number(r.share_pct)}%</td><td>${growth(r.growth_pct)}</td>
+    <td>${money(r.spend_aed)}</td><td>${esc(num(r.cost_per_lead))}</td><td class="mute">${esc(r.contact_window || '—')}</td></tr>`;
 }
 
 export async function render(el) {
   el.innerHTML = `<h1>${esc(t('nav_markets'))}</h1>
-    <div class="toolbar"><label class="mute" for="mk-period">${esc(t('h_period'))}</label><input id="mk-period" placeholder="2026-10" maxlength="7" aria-label="${esc(t('h_period'))}"><span class="mute">${esc(t('period_note'))}</span></div>
+    <div class="toolbar"><label class="mute" for="mk-period">${esc(t('h_period'))}</label><input id="mk-period" placeholder="2026-10" maxlength="7" pattern="\\d{4}-(0[1-9]|1[0-2])" aria-label="${esc(t('h_period'))}"><span class="mute">${esc(t('period_note'))}</span></div>
     <div id="mk-body"><p class="mute">${esc(t('loading'))}</p></div>`;
+  let seq = 0, last = null;
   const load = async () => {
     const per = $('#mk-period', el).value.trim();
     const body = $('#mk-body', el);
+    if (per === last) return;                                   // Enter and change both fire: one request per value
+    if (per && !/^\d{4}-(0[1-9]|1[0-2])$/.test(per)) { body.innerHTML = `<p class="msg err" role="alert">${esc(t('mk_bad_period'))}</p>`; last = per; return; }
+    last = per;
+    const my = ++seq;                                           // a slower, older answer never replaces a newer one
     try {
       const r = await api('/markets/intel' + (per ? '?period=' + encodeURIComponent(per) : ''));
-      if (!el.isConnected) return;
+      if (!el.isConnected || my !== seq) return;
       if (!r.countries.length) {
         body.innerHTML = `<div class="card empty"><p>${esc(t('mk_empty'))}</p><p class="mute">${esc(t('mk_empty_help'))}</p></div>${untapped(r)}`;
         return;
@@ -38,21 +43,25 @@ export async function render(el) {
               <div class="bar"><i data-w="${Math.round(f.score)}"></i></div><div class="mute">${f.reasons.map(k => `<span class="tag">${esc(t('mk_reason_' + k))}</span>`).join('')}</div></div>
               <div><b>${esc(f.score)}</b></div></div>`).join('') : `<p class="mute">—</p>`}</div>
         ${untapped(r)}`;
-      body.dataset.cities = JSON.stringify(r.cities);
       applyData(body);
-    } catch (e) { if (el.isConnected) body.innerHTML = `<p class="msg err" role="alert">${err(e)}</p>`; }
+    } catch (e) { if (el.isConnected && my === seq) body.innerHTML = `<p class="msg err" role="alert">${err(e)}</p>`; }
   };
   const untapped = r => `<div class="card"><h2>${esc(t('mk_untapped'))}</h2><p class="mute">${esc(t('mk_untapped_note'))}</p>
     <div class="tablewrap"><table id="mk-untapped"><tbody>${r.untapped.map(u => `<tr><td><b>${esc(u.name)}</b> <span class="mute">${esc(u.country)}</span></td><td>${esc(u.language || '—')}</td><td class="mute">${esc(u.contact_window || '—')}</td></tr>`).join('')}</tbody></table></div></div>`;
-  el.addEventListener('click', e => {
+  $('#mk-body', el).addEventListener('click', async e => {         // bound to this render's own body: no listener piles up on the shared #view
     const tr = e.target.closest('tr.mk-country');
     if (!tr) return;
     const open = tr.dataset.open === '1';
     el.querySelectorAll(`tr.mk-city[data-country="${CSS.escape(tr.dataset.country)}"]`).forEach(x => x.remove());
     tr.dataset.open = open ? '0' : '1';
+    const btn = tr.querySelector('.mk-toggle');
+    if (btn) { btn.setAttribute('aria-expanded', String(!open)); btn.textContent = open ? '▸' : '▾'; }
     if (open) return;
-    const cities = JSON.parse($('#mk-body', el).dataset.cities || '[]').filter(c => c.country === tr.dataset.id);
-    tr.insertAdjacentHTML('afterend', cities.map(c => row(c, 'mk-city')).join(''));
+    try {
+      const d = await api('/markets/intel/' + encodeURIComponent(tr.dataset.id));      // the full city list for this country, not the top-N slice
+      if (!el.isConnected || tr.dataset.open !== '1' || el.querySelector(`tr.mk-city[data-country="${CSS.escape(tr.dataset.country)}"]`)) return;
+      tr.insertAdjacentHTML('afterend', d.cities.map(c => row(c, 'mk-city')).join(''));
+    } catch (x) { /* country row stays; nothing to expand */ }
   });
   $('#mk-period', el).addEventListener('keydown', e => { if (e.key === 'Enter') load(); });
   $('#mk-period', el).addEventListener('change', load);

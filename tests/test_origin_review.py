@@ -8,7 +8,7 @@ from leadengine.db import DB
 from leadengine.identity import normalize_phone
 from leadengine.markets.cities import resolve
 from leadengine.markets.intel import market_report
-from leadengine.markets.origin import country_for_phone, resolve_origin
+from leadengine.markets.origin import Origin, country_for_phone, resolve_origin
 from leadengine.roi import record_spend
 
 NOW = datetime(2026, 10, 21, 12, 0, tzinfo=timezone.utc)
@@ -17,7 +17,9 @@ NOW = datetime(2026, 10, 21, 12, 0, tzinfo=timezone.utc)
 @pytest.mark.parametrize("text", [
     "Looking for a place to live in Dubai Marina", "best area to live in Dubai?", "I want to live in Dubai", "I would love to live in Dubai",
     "I don't live in London anymore", "do not live in London", "the developer is based in London", "agent based in Mumbai",
-    "I'm in Dubai next week, coming from nowhere", "I'm in! London villa please", "I'm in. London?", "We love living in Dubai"])
+    "I'm in Dubai next week, coming from nowhere", "I'm in! London villa please", "I'm in. London?", "We love living in Dubai",
+    "Prices currently in London are crazy", "Lots of buyers coming from Mumbai lately", "Is there demand coming from London for Marina?",
+    "many people moving from London to Dubai", "buyers relocating from Mumbai"])
 def test_phrase_false_positives(text):
     o = resolve_origin(text, None)
     assert o is None, (text, o)
@@ -25,6 +27,9 @@ def test_phrase_false_positives(text):
 
 @pytest.mark.parametrize("text,country", [("I live in London", "GB"), ("we live in London", "GB"), ("I'm based in London", "GB"),
                                            ("I am living in London", "GB"), ("انا من لندن", "GB"), ("أنا حاليا في لندن", "GB"),
+                                           ("No, I'm in London", "GB"), ("Like I said, I'm in London", "GB"), ("Happy to help, I'm in London", "GB"),
+                                           ("Thanks! Can you call, I'm in London", "GB"), ("Not sure, I live in Delhi", "IN"), ("Hi, moving from London", "GB"),
+                                           ("I'm coming from London", "GB"),
                                            ("I'm in Dubai next week but I'm in London now", "GB")])
 def test_first_person_phrases_still_work(text, country):
     o = resolve_origin(text, None)
@@ -44,7 +49,7 @@ def test_common_country_values(value, iso):
 
 def test_form_country_conflicting_with_city_keeps_the_country():
     o = resolve_origin(None, None, country="US", city="Birmingham")
-    assert o.country in ("US", "GB")
+    assert o == Origin("US", None, "form")
     assert resolve_origin(None, None, city="london-gb").country == "GB"                     # catalogue ids are accepted too
 
 

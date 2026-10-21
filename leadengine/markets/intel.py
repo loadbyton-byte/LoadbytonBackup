@@ -149,6 +149,6 @@ def market_report(db: DB, now: datetime | None = None, period: str | None = None
     untapped = [{"id": c.id, "name": c.name, "country": c.country, "language": c.languages[0] if c.languages else None, "timezone": c.timezone,
                  "contact_window": contact_window(c.timezone, now), "tier": c.tier}
                 for c in sorted(cat, key=lambda c: (c.tier, c.name)) if c.tier <= 2 and c.country != DOMESTIC and c.id not in have and c.country not in active][:10]
-    return {"known_origin_pct": round(100 * len(known) / len(leads)) if leads else None, "total_leads": len(leads),
+    return {"known_origin_pct": _r(100 * len(known) / len(leads)) if leads else None, "total_leads": len(leads),
             "unallocated_spend_aed": round(unallocated, 2), "countries": countries[:limit], "cities": cities[:limit], "focus": focus[:limit],
             "untapped": untapped, "generated_at": now.isoformat()}

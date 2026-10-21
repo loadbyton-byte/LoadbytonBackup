@@ -82,18 +82,22 @@ def country_for_phone(phone: str | None) -> str | None:
 
 
 # First-person phrases only: "live in", "living in" and "based in" alone are too common in property talk ("best area to live in Dubai").
-_PHRASES_EN = ("i am in", "i m in", "im in", "we are in", "we re in", "currently in", "i am currently in", "i m currently in",
+_PHRASES_EN = ("i am in", "i m in", "im in", "we are in", "we re in", "i am currently in", "i m currently in", "we are currently in", "we re currently in",
                "i live in", "we live in", "i am living in", "i m living in", "we are living in", "we re living in",
                "i am based in", "i m based in", "we are based in", "we re based in", "i am residing in", "i m residing in",
-               "moving from", "relocating from", "flying from", "coming from", "calling from", "writing from", "originally from",
+               "i am coming from", "i m coming from", "we are coming from", "we re coming from",
+               "i am originally from", "i m originally from", "we are originally from", "we re originally from",
                "i am from", "i m from", "we are from", "we re from")
+# No first-person subject, so these count only when they open a clause ("Hi, moving from London"), never inside a sentence about others
+_BARE_EN = ("moving from", "relocating from", "flying from", "calling from", "writing from")
 _PHRASES_AR = ("انا في", "انا حاليا في", "نحن في", "نحن حاليا في", "مقيم في", "مقيمه في", "ساكن في", "ساكنه في", "اسكن في", "اعيش في",
                "انا من", "نحن من", "قادم من", "قادمه من", "جاي من", "مسافر من", "مسافره من")
-_BEFORE_BLOCK = {"to", "want", "wants", "wanted", "would", "love", "like", "dont", "don", "not", "never", "no", "longer", "developer", "agent", "company",
-                 "broker", "he", "she", "they", "where", "if", "when", "should", "can", "could", "will", "ل", "يبغى", "ابغى", "ابي", "المطور", "الوكيل"}
+_FILLER = {"hi", "hello", "hey", "salam", "thanks", "thank", "you", "please", "pls", "ok", "okay", "yes", "no"}
+_BEFORE_BLOCK = {"to", "want", "wants", "wanted", "would", "love", "if", "when", "where", "developer", "agent", "company", "broker",
+                 "he", "she", "they", "ل", "يبغى", "ابغى", "ابي", "المطور", "الوكيل"}
 _AFTER_PLAN = {"next", "tomorrow", "soon", "tonight", "later", "weekend", "قريبا", "بكرا", "غدا"}
 _PUNCT = re.compile(r"[^\w\s]", re.U)
-_SENTENCE = re.compile(r"[.!?؟\n]+")
+_SENTENCE = re.compile(r"[.!?؟\n,;:،؛\-–—]+")                  # clause boundaries: a phrase is judged only against its own clause
 
 
 def _prep(text: str) -> str:
@@ -101,7 +105,8 @@ def _prep(text: str) -> str:
     return re.sub(r"\s+", " ", _PUNCT.sub(" ", t)).strip()
 
 
-_ALL_PHRASES = tuple(dict.fromkeys((*_PHRASES_EN, *(_prep(p) for p in _PHRASES_AR))))
+_ALL_PHRASES = tuple(dict.fromkeys((*_PHRASES_EN, *_BARE_EN, *(_prep(p) for p in _PHRASES_AR))))
+_BARE = set(_BARE_EN)
 
 
 def _starts_with_alias(tail: str, city: City) -> int:
@@ -118,8 +123,10 @@ def _from_text(text: str) -> Origin | None:
         best: tuple[int, City] | None = None
         for phrase in _ALL_PHRASES:
             for m in re.finditer(rf"(?<!\w){re.escape(phrase)} ", t):
-                before = t[:m.start()].split()[-3:]
-                if any(w in _BEFORE_BLOCK for w in before):
+                before = t[:m.start()].split()
+                if phrase in _BARE and any(w not in _FILLER for w in before):
+                    continue
+                if any(w in _BEFORE_BLOCK for w in before[-2:]):
                     continue
                 rest = t[m.end():m.end() + 160].split(" ")
                 tail = " ".join(rest[:4])

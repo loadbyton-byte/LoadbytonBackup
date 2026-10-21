@@ -44,3 +44,20 @@ def test_backfill_over_http():
         cx.execute("INSERT INTO leads(first_seen,last_seen,platforms,phone) VALUES('2026-10-01T00:00:00+00:00','2026-10-01T00:00:00+00:00','[]','+919876543210')")
     assert c.post("/markets/backfill-origin").json() == {"updated": 1, "unresolved": 0}
     assert c.get("/markets/intel").json()["countries"][0]["id"] == "IN"
+
+
+def test_country_drilldown_is_not_cut_by_the_top_n_limit():
+    from leadengine.markets.cities import catalogue
+    c = client()
+    db = c.app.state.db
+    cities = [x for x in catalogue() if x.country != "AE"]
+    gb = [x for x in cities if x.country == "GB"]
+    others = [x for x in cities if x.country != "GB"][:40]
+    with db.tx() as cx:
+        for x in others + gb:
+            for _ in range(2 if x.country != "GB" else 1):
+                cx.execute("INSERT INTO leads(first_seen,last_seen,platforms,tier,status,score,origin_country,origin_city,origin_basis) VALUES(?,?,?,?,?,?,?,?,?)",
+                           ("2026-10-01T00:00:00+00:00",) * 2 + ("[]", "HOT", "new", 50, x.country, x.id, "form"))
+    assert len(c.get("/markets/intel").json()["cities"]) == 25
+    d = c.get("/markets/intel/GB").json()
+    assert {x["id"] for x in d["cities"]} == {x.id for x in gb}
