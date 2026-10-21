@@ -28,7 +28,7 @@ sources ─► connectors ─► suppression check ─► bilingual intent NLP �
 | **Next-best-action** | Per-lead tasks (assign, call overdue, first response, send matches, nurture day 2/5/10, valuation visit, re-engage) each showing whether the channel is *permitted*. `/tasks/today` per agent. |
 | **ROI by source** | Spend per source (optionally per month) → leads, qualified, won, median first-response time, % within SLA, cost per lead / qualified / won. Ratios are `null` (never an error) when there's nothing to divide by. |
 | **Capture widget** | `widget.js` + `POST /capture`: origin allow-list, honeypot, rate limit, explicit consent checkbox whose wording is stored as evidence. |
-| **Source-market catalogue** | 231 cities in 105 countries (Bangalore, Chennai, Mumbai, London, Riyadh, Moscow, Lagos, Singapore, New York…) with language, currency, timezone and aliases; free-text city detection in EN/AR/RU. See `docs/markets/CITY_CATALOGUE.md`. |
+| **Source-market catalogue** | 231 cities in 109 countries (Bangalore, Chennai, Mumbai, London, Riyadh, Moscow, Lagos, Singapore, New York…) with language, currency, timezone and aliases; free-text city detection in EN/AR/RU. See `docs/markets/CITY_CATALOGUE.md`. |
 | **Demand Radar** | De-identified demand by community with growth and buy/rent/supply mix. |
 | **Dashboard** | DigitalBurj brand (wordmark, palette, fonts), light/dark, English and Arabic (RTL), phone-friendly. |
 

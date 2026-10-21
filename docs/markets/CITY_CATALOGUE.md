@@ -1,6 +1,6 @@
 # Source-market city catalogue
 
-`leadengine/markets/cities.psv` lists 231 cities in 105 countries (South Asia, GCC, Middle East & Caucasus, Africa, Europe, Russia &
+`leadengine/markets/cities.psv` lists 231 cities in 109 countries (South Asia, GCC, Middle East & Caucasus, Africa, Europe, Russia &
 Central Asia, East & Southeast Asia, Oceania, North America, Latin America & Caribbean, plus UAE home markets). Each row has the ISO
 country, region, IANA timezone, marketing languages (ISO 639-1), an editorial tier, and aliases (Bangalore/Bengaluru, Chennai/Madras,
 Mumbai/Bombay, Arabic and Russian names for some).
