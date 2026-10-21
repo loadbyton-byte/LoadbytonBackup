@@ -14,3 +14,7 @@ Mumbai/Bombay, Arabic and Russian names for some).
   `search(...)`. API: `GET /markets/cities?q=&country=&region=&tier=&lang=&limit=`, `GET /markets/summary`.
 - Text matching ignores 1-2 character aliases and uses word boundaries for Latin names to avoid false hits ("Nice" is deliberately absent).
 - This is a catalogue of *places*. It contains no personal data, and nothing here collects any.
+
+## Used by market intelligence
+
+`leadengine/markets/intel.py` builds the per-workspace Markets report on this catalogue. A city's `tier` is an **editorial prior** (1 → 80, 2 → 55, 3 → 30 points) blended with the workspace's own measured demand (`score = (leads × measured + 10 × prior) / (leads + 10)`), so edit tiers here to change the starting priority. Arabic aliases (e.g. `لندن`) let the origin resolver read "أنا في لندن"; add more as needed.

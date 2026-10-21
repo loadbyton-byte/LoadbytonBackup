@@ -29,6 +29,7 @@ sources ─► connectors ─► suppression check ─► bilingual intent NLP �
 | **ROI by source** | Spend per source (optionally per month) → leads, qualified, won, median first-response time, % within SLA, cost per lead / qualified / won. Ratios are `null` (never an error) when there's nothing to divide by. |
 | **Capture widget** | `widget.js` + `POST /capture`: origin allow-list, honeypot, rate limit, explicit consent checkbox whose wording is stored as evidence. |
 | **Source-market catalogue** | 231 cities in 109 countries (Bangalore, Chennai, Mumbai, London, Riyadh, Moscow, Lagos, Singapore, New York…) with language, currency, timezone and aliases; free-text city detection in EN/AR/RU. See `docs/markets/CITY_CATALOGUE.md`. |
+| **Market intelligence** | Where your leads come from, by country and city: leads, qualified, won, growth and cost per lead/qualified/won (tag ad spend with a country or city). A "where to focus next" list blends *your measured results* with the catalogue's editorial priority (few leads → mostly editorial, labelled as such) and lists untapped priority cities with their local contact window in UAE time. Origin is read only from what people gave you (a country/city form field, their own phone's country code, or an explicit "I am in London" phrase) — no IP lookups or enrichment — and the page shows aggregates only. `GET /markets/intel`, Markets page in the dashboard; `POST /markets/backfill-origin` (owner) fills in older leads. |
 | **Demand Radar** | De-identified demand by community with growth and buy/rent/supply mix. |
 | **Dashboard** | DigitalBurj brand (wordmark, palette, fonts), light/dark, English and Arabic (RTL), phone-friendly. In platform mode: accounts, isolated workspaces, roles, marketing site and an app shell (see below). |
 
@@ -124,7 +125,7 @@ HTTPS (reverse proxy or your host's TLS); webhooks and the capture widget need a
 
 `/ingest/{signals,csv,portal-email}` · `/connectors/{name}/run` · `/webhooks/{meta,whatsapp,form/{platform}}` · `GET /leads` · `GET /leads/{id}` ·
 `/leads/{id}/{outreach,consent,status,activities,assign,matches,deal-sheet,next-actions,viewings}` · `/agents` · `/tasks/today` ·
-`/viewings` + `/viewings.ics` · `/inventory` · `/spend` + `/roi` · `/radar` · `/tools/{deal-costs,mortgage,yield}` · `/capture` · `/optout` · `/audit`
+`/viewings` + `/viewings.ics` · `/inventory` · `/spend` + `/roi` · `/markets/{cities,summary,intel}` · `/radar` · `/tools/{deal-costs,mortgage,yield}` · `/capture` · `/optout` · `/audit`
 
 ## Known limits (read before relying on it)
 
@@ -139,6 +140,7 @@ HTTPS (reverse proxy or your host's TLS); webhooks and the capture widget need a
 - Calendar feeds (`/viewings.ics?agent_id=…&token=…`) use a per-agent, read-only token derived from the API key (shown on the Agents tab); the master key is header-only and is never accepted in a URL.
 - Opted-out people are ignored permanently (a returning WhatsApp message or widget submission is dropped silently). Whether to let an explicit new opt-in lift the suppression is a policy/legal decision left to you.
 - ROI groups spend by source (not campaign); use the Period filter (`YYYY-MM`) so spend and leads cover the same window. Names like "Bayut" are matched to `portal:bayut`.
+- Market origin is known only for leads whose phone has a country code (not shared +1 numbers), who filled a country/city field, or who wrote an explicit self-location phrase; a plain mention of a city is not treated as origin. Arabic city names are matched only where the catalogue has an Arabic alias (London, Mumbai, Karachi, Lahore, Delhi, Riyadh, Cairo… — add more in `cities.psv`). Editorial tiers are priors, not statistics.
 - Nothing verifies that a BRN or Trakheesi permit is valid; drafts just include what you configure.
 
 ## Brand
@@ -152,6 +154,7 @@ authorisation. Tokens live in `dashboard/theme.css`.
 leadengine/nlp/          text normalisation, area gazetteer, intent + entity extraction
 leadengine/connectors/   reddit · apify (licensed provider) · forms (Meta/TikTok/LinkedIn/portals/CSV) · whatsapp
 leadengine/pipeline.py   ingest → classify → resolve → score → aggregate; consent, erasure, opt-out
+leadengine/markets/      city catalogue · origin resolver · market report
 leadengine/{scoring,compliance,distribution,qualify,inventory,calculators,viewings,nba,roi,radar,capture,outreach}.py
 leadengine/api.py        FastAPI app            dashboard/   index.html + theme.css + brand/ + fonts/
 leadengine/platform/     accounts, security, control DB, workspaces (tenancy), role policy, dispatcher app, site renderer, maintenance
