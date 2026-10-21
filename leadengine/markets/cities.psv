@@ -6,8 +6,8 @@ Sharjah|AE|UAE (domestic)|Asia/Dubai|ar;en|3|الشارقة
 Ajman|AE|UAE (domestic)|Asia/Dubai|ar;en|3|عجمان
 Ras Al Khaimah|AE|UAE (domestic)|Asia/Dubai|ar;en|3|RAK;رأس الخيمة
 Al Ain|AE|UAE (domestic)|Asia/Dubai|ar;en|3|
-Mumbai|IN|South Asia|Asia/Kolkata|en;hi;mr|1|Bombay
-Delhi|IN|South Asia|Asia/Kolkata|en;hi|1|New Delhi
+Mumbai|IN|South Asia|Asia/Kolkata|en;hi;mr|1|Bombay;مومباي;بومباي
+Delhi|IN|South Asia|Asia/Kolkata|en;hi|1|New Delhi;دلهي
 Bangalore|IN|South Asia|Asia/Kolkata|en;kn;hi|1|Bengaluru
 Chennai|IN|South Asia|Asia/Kolkata|en;ta|1|Madras
 Hyderabad|IN|South Asia|Asia/Kolkata|en;te;ur|1|Secunderabad
@@ -44,8 +44,8 @@ Rajkot|IN|South Asia|Asia/Kolkata|gu;en|3|
 Bhubaneswar|IN|South Asia|Asia/Kolkata|or;en|3|
 Patna|IN|South Asia|Asia/Kolkata|hi;en|3|
 Goa|IN|South Asia|Asia/Kolkata|en;hi|3|Panaji
-Karachi|PK|South Asia|Asia/Karachi|ur;en|1|
-Lahore|PK|South Asia|Asia/Karachi|ur;pa;en|1|
+Karachi|PK|South Asia|Asia/Karachi|ur;en|1|كراتشي
+Lahore|PK|South Asia|Asia/Karachi|ur;pa;en|1|لاهور
 Islamabad|PK|South Asia|Asia/Karachi|ur;en|1|
 Rawalpindi|PK|South Asia|Asia/Karachi|ur;en|2|
 Faisalabad|PK|South Asia|Asia/Karachi|ur;pa|2|
@@ -108,7 +108,7 @@ Abidjan|CI|Africa|Africa/Abidjan|fr|3|
 Kinshasa|CD|Africa|Africa/Kinshasa|fr;ln|3|
 Port Louis|MU|Africa|Indian/Mauritius|en;fr|3|
 Douala|CM|Africa|Africa/Douala|fr;en|3|
-London|GB|Europe|Europe/London|en|1|
+London|GB|Europe|Europe/London|en|1|لندن
 Manchester|GB|Europe|Europe/London|en|2|
 Birmingham|GB|Europe|Europe/London|en|2|
 Leeds|GB|Europe|Europe/London|en|3|
