@@ -41,9 +41,10 @@ LIMIT_AUTH, LIMIT_PUBLIC, LIMIT_API, LIMIT_OTHER = 32 * 1024, 256 * 1024, 8 * 10
 REGISTER_FLOOR_S, FORGOT_FLOOR_S = 0.4, 0.15      # minimum response time: new and existing addresses look alike
 # First path segment of the workspace API (what the dispatcher takes over). Everything else belongs to the platform app.
 TENANT_PREFIXES = frozenset("leads agents tasks roi spend inventory viewings viewings.ics radar stats audit ingest connectors tools markets "
-                            "maintenance demo overview".split())
+                            "maintenance demo overview magnets".split())
 PUBLIC_EXACT = frozenset({"/capture", "/widget.js", "/optout", "/webhooks/meta", "/webhooks/whatsapp"})
 PUBLIC_FORM = re.compile(r"^/webhooks/form/[a-z0-9_-]{1,32}$")
+PUBLIC_PAGES = re.compile(r"^/p(/(affordability|costs|yield|mortgage|concierge|lead))?$")        # lead magnets + concierge
 EMAIL_OK = re.compile(r"^[^@\s<>\"']{1,64}@[^@\s<>\"']+\.[^@\s<>\"']{2,}$")
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 STATUS = {"rate_limited": 429, "forbidden": 403, "not_verified": 403, "invalid_credentials": 401, "already_member": 409}
@@ -138,8 +139,11 @@ class Dispatcher:
 
     # -- helpers
     @staticmethod
-    def _hardened(send, no_store: bool = False, head: bool = False):
-        extra = [(b"x-content-type-options", b"nosniff"), (b"referrer-policy", b"no-referrer"), (b"x-frame-options", b"DENY")]
+    def _hardened(send, no_store: bool = False, head: bool = False, framing: bool = False):
+        """`framing=True` (public lead-magnet pages) leaves framing to the page's own CSP `frame-ancestors` instead of sending X-Frame-Options: DENY."""
+        extra = [(b"x-content-type-options", b"nosniff"), (b"referrer-policy", b"no-referrer")]
+        if not framing:
+            extra.append((b"x-frame-options", b"DENY"))
         if no_store:
             extra.append((b"cache-control", b"no-store"))
         names = {k for k, _ in extra}
@@ -167,12 +171,12 @@ class Dispatcher:
         m = re.match(r"^/t/([A-Za-z0-9_-]{1,64})(/.*)$", path or "")
         tenant = self.tenants.tenant_by_key(m.group(1)) if m else None
         rest = m.group(2) if m else ""
-        if not tenant or not (rest in PUBLIC_EXACT or PUBLIC_FORM.match(rest)):
+        if not tenant or not (rest in PUBLIC_EXACT or PUBLIC_FORM.match(rest) or PUBLIC_PAGES.match(rest)):
             return await self._reply(_not_found(), scope, receive, send)
         try:
             with self.tenants.lease(tenant.id) as tapp:
                 fwd = self._forward_scope(scope, rest, {b"cookie", b"x-api-key", b"x-csrf-token"})
-                await tapp(fwd, receive, self._hardened(send))
+                await tapp(fwd, receive, self._hardened(send, framing=bool(PUBLIC_PAGES.match(rest))))
         except KeyError:
             await self._reply(_not_found(), scope, receive, send)
 
@@ -673,7 +677,11 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
         key = control.one("SELECT public_key FROM tenants WHERE id=?", (info.tenant_id,))["public_key"]
         url = f"{s.base_url.rstrip('/')}/t/{key}/widget.js"
         have = tenants.public_settings(info.tenant_id)
-        return _json(200, {**{k: getattr(cfg, k) for k in PROFILE_KEYS}, "capture_origins": list(cfg.capture_origins),
+        base_pub = f"{s.base_url.rstrip('/')}/t/{key}/p"
+        pages = [{"tool": tool, "url": f"{base_pub}/{tool}" if tool else base_pub,
+                  "iframe": f'<iframe src="{base_pub}/{tool}" title="{tool}" loading="lazy" width="100%" height="640"></iframe>'}
+                 for tool in ("affordability", "costs", "yield", "mortgage", "concierge")]
+        return _json(200, {**{k: getattr(cfg, k) for k in PROFILE_KEYS}, "capture_origins": list(cfg.capture_origins), "public_pages": pages,
                            "secrets": {k: bool(have.get(k)) for k in SECRET_KEYS},
                            "embed": {"widget_url": url, "snippet": f'<div id="digitalburj-leads"></div>\n<script src="{url}" data-source="website" defer></script>'}})
 

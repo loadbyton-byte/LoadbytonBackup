@@ -37,7 +37,7 @@ def test_every_tenant_route_is_scoped(two):
     for r in inner.routes:
         methods = getattr(r, "methods", None)
         path = getattr(r, "path", None)
-        if not methods or path in OPEN_ROUTES or path.startswith("/webhooks"):
+        if not methods or path in OPEN_ROUTES or path.startswith("/webhooks") or path.startswith("/p/") or path == "/p":
             continue
         for method in sorted(methods - {"HEAD", "OPTIONS"}):
             url = (path.replace("{lead_id}", "1").replace("{agent_id}", "1").replace("{name}", "reddit").replace("{country}", "GB").replace("{platform}", "tiktok"))

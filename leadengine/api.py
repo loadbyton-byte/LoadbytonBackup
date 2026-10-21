@@ -498,6 +498,13 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     def markets_backfill(_=Depends(auth)):
         return pipe.backfill_origin()
 
+    @app.get("/magnets/stats")
+    def magnets_stats(_=Depends(auth)):
+        c = {r["key"]: r["value"] for r in db.q("SELECT key,value FROM stats WHERE key LIKE 'magnet\\_%' ESCAPE '\\' OR key LIKE 'concierge\\_%' ESCAPE '\\'")}
+        tools = {t: {"views": c.get(f"magnet_{t}_view", 0), "submits": c.get(f"magnet_{t}_submit", 0), "leads": c.get(f"magnet_{t}_lead", 0)}
+                 for t in ("affordability", "costs", "yield", "mortgage")}
+        return {"tools": tools, "concierge": {"started": c.get("concierge_start", 0), "completed": c.get("concierge_done", 0), "declined": c.get("concierge_declined", 0)}}
+
     @app.get("/markets/summary")
     def markets_summary(_=Depends(auth)):
         return city_stats()

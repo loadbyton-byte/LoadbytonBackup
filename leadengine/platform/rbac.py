@@ -37,7 +37,7 @@ _RULES: list[tuple[frozenset[str], re.Pattern[str], str]] = [
     (frozenset({"GET"}), re.compile(r"^/viewings$"), "agent"),
     # manager-level: everything else the workspace API offers
     (frozenset({"GET", "POST", "PATCH"}),
-     re.compile(r"^/(agents|audit|connectors|ingest|inventory|leads|markets|overview|radar|roi|spend|stats|tasks|tools|viewings(\.ics)?|maintenance/(escalate|rescore))(/.*)?$"),
+     re.compile(r"^/(agents|audit|connectors|ingest|inventory|leads|magnets|markets|overview|radar|roi|spend|stats|tasks|tools|viewings(\.ics)?|maintenance/(escalate|rescore))(/.*)?$"),
      "manager"),
 ]
 
