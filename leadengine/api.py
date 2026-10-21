@@ -25,6 +25,8 @@ from .models import Signal, utcnow
 from .inventory import import_projects_csv, match as match_projects
 from .markets.cities import search as search_cities, stats as city_stats
 from .markets.intel import market_report
+from .magnets.pages import install as install_magnets
+from .platform import site as sitelib
 from .nba import next_actions, todays_tasks
 from .outreach import draft
 from .pipeline import Pipeline
@@ -131,6 +133,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     app = FastAPI(title="DigitalBurj Leads", version="1.0.0")
     app.state.pipeline, app.state.db, app.state.settings = pipe, db, s
     app.mount("/static", StaticFiles(directory=DASH.parent), name="static")
+    app.mount("/site-static", StaticFiles(directory=sitelib.SITE_DIR / "static"), name="site-static")
 
     def auth(x_api_key: str = Header(default="")) -> str:
         if s.api_key and x_api_key != s.api_key:
@@ -327,6 +330,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     def widget(request: Request):
         return Response(widget_js(s.public_url or str(request.base_url)), media_type="application/javascript",
                         headers={"Cache-Control": "public, max-age=300"})
+
+    install_magnets(app, db=db, pipe=pipe, settings=s, limiter=limiter, client_ip=client_ip)   # public calculators + concierge (/p...)
 
     # ---------------------------------------------------------------- agents & routing
     def agent_dict(r, open_leads: int = 0) -> dict:
