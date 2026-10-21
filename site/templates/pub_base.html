@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="{{$lang}}" dir="{{$dir}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{$title}}</title>
+<meta name="description" content="{{$description}}">
+{{!robots}}
+<link rel="canonical" href="{{$canonical}}">
+<link rel="alternate" hreflang="en" href="{{$alt_en}}">
+<link rel="alternate" hreflang="ar" href="{{$alt_ar}}">
+<link rel="stylesheet" href="/site-static/pub.css">
+</head>
+<body>
+<a class="skip" href="#main">{{nav.skip}}</a>
+<header class="top"><a class="brand" href="{{$home_href}}">{{$agency}}</a>
+<a class="lang" href="{{$lang_href}}" hreflang="{{$other_lang}}" lang="{{$other_lang}}" aria-label="{{nav.lang_label}}">{{nav.lang}}</a></header>
+<main id="main">
+{{!content}}
+</main>
+<footer class="foot"><p>{{!agent_line}}</p><p class="mute">{{pub.powered}}</p></footer>
+</body>
+</html>

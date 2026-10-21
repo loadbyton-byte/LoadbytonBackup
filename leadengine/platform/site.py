@@ -115,6 +115,23 @@ def render_page(name: str, lang: str, ctx: dict | None = None) -> str:
     return _render(_expand(_template("base")), lang, ctx)
 
 
+def render_with_base(template: str, base: str, lang: str, ctx: dict) -> str:
+    """Render `template` into `base` for the lean public (per-workspace) pages. `{{$x}}` values are escaped, `{{!x}}` are trusted
+    server-built HTML only. Needs ctx `title`, `description`; `canonical_path`, `prefix` and `base_url` build canonical/hreflang URLs."""
+    lang = lang if lang in LANGS else "en"
+    c = dict(ctx)
+    origin, prefix, path = (c.get("base_url") or "").rstrip("/"), c.get("prefix", ""), c.get("canonical_path", "/p")
+    other = "en" if lang == "ar" else "ar"
+    c.update({"lang": lang, "dir": "rtl" if lang == "ar" else "ltr", "other_lang": other,
+              "canonical": f"{origin}{prefix}{path}?lang={lang}", "alt_en": f"{origin}{prefix}{path}?lang=en", "alt_ar": f"{origin}{prefix}{path}?lang=ar",
+              "lang_href": f"{prefix}{path}?lang={other}"})
+    c.setdefault("robots", "")
+    c.setdefault("agent_line", "")
+    c.setdefault("home_href", f"{prefix}/p")
+    c["content"] = _render(_expand(_template(template)), lang, c)
+    return _render(_expand(_template(base)), lang, c)
+
+
 def detect_lang(accept_language: str | None, cookie: str | None, query: str | None = None) -> str:
     """Explicit choice (query, then cookie) wins; otherwise the best Accept-Language match; default English."""
     for choice in (query, cookie):
