@@ -1,7 +1,7 @@
 """Where a lead is from, using only what the person supplied: explicit form fields, their own phone number's country code, or an
-explicit self-location phrase in their own text ("I'm in London"). No IP geolocation, lookups or enrichment.
+explicit first-person self-location phrase in their own text ("I'm in London"). No IP geolocation, lookups or enrichment.
 
-A plain mention of a place ("interested in London property", "a flat in Dubai Marina") is NOT an origin."""
+A plain mention of a place ("interested in London property", "a flat in Dubai Marina", "best area to live in Dubai") is NOT an origin."""
 from __future__ import annotations
 
 import re
@@ -34,7 +34,33 @@ CALLING_CODES: dict[str, str] = {
     "VN": "84", "ZA": "27", "ZM": "260", "ZW": "263",
 }
 SHARED_PLUS_ONE = {"US", "CA", "JM", "TT"}
+_NANP_ISLANDS = {"1876": "JM", "1868": "TT"}                    # +1 area codes that identify a catalogue country
 _BY_CODE = sorted(((v, k) for k, v in CALLING_CODES.items()), key=lambda x: -len(x[0]))
+
+# Common ways people write a country on a form that are not the catalogue's official name.
+COUNTRY_ALIASES = {
+    "uk": "GB", "u.k.": "GB", "great britain": "GB", "britain": "GB", "england": "GB", "scotland": "GB", "wales": "GB", "northern ireland": "GB",
+    "uae": "AE", "u.a.e.": "AE", "emirates": "AE", "usa": "US", "u.s.a.": "US", "u.s.": "US", "america": "US", "ksa": "SA", "saudi": "SA",
+    "turkey": "TR", "ivory coast": "CI", "cote d'ivoire": "CI", "russian federation": "RU", "korea": "KR", "republic of korea": "KR",
+    "holland": "NL", "czech republic": "CZ", "burma": "MM", "drc": "CD", "congo": "CD", "hong kong sar": "HK",
+}
+
+
+def resolve_country(value) -> str | None:
+    """ISO2 for an ISO2 code, an official name or a common alias (accent/case-insensitive); None if unknown."""
+    if not isinstance(value, str):
+        return None
+    key = _fold(value.strip())
+    if not 2 <= len(key) <= 60:
+        return None
+    if key.upper() in COUNTRIES:
+        return key.upper()
+    if key in COUNTRY_ALIASES:
+        return COUNTRY_ALIASES[key]
+    for iso, (name, _cur) in COUNTRIES.items():
+        if _fold(name) == key:
+            return iso
+    return None
 
 
 def country_for_phone(phone: str | None) -> str | None:
@@ -48,53 +74,84 @@ def country_for_phone(phone: str | None) -> str | None:
     if digits.startswith("7"):
         return "KZ" if digits[1:2] in ("6", "7") else "RU"
     if digits.startswith("1"):
-        return None
+        return _NANP_ISLANDS.get(digits[:4])
     for code, cc in _BY_CODE:
         if digits.startswith(code):
             return cc
     return None
 
 
-_PHRASES_EN = ("i am in", "i m in", "im in", "we are in", "we re in", "based in", "living in", "live in", "residing in", "currently in",
+# First-person phrases only: "live in", "living in" and "based in" alone are too common in property talk ("best area to live in Dubai").
+_PHRASES_EN = ("i am in", "i m in", "im in", "we are in", "we re in", "currently in", "i am currently in", "i m currently in",
+               "i live in", "we live in", "i am living in", "i m living in", "we are living in", "we re living in",
+               "i am based in", "i m based in", "we are based in", "we re based in", "i am residing in", "i m residing in",
                "moving from", "relocating from", "flying from", "coming from", "calling from", "writing from", "originally from",
                "i am from", "i m from", "we are from", "we re from")
-_PHRASES_AR = ("انا في", "نحن في", "مقيم في", "مقيمه في", "ساكن في", "ساكنه في", "اسكن في", "اعيش في", "قادم من", "قادمه من", "جاي من",
-               "مسافر من", "مسافره من")
+_PHRASES_AR = ("انا في", "انا حاليا في", "نحن في", "نحن حاليا في", "مقيم في", "مقيمه في", "ساكن في", "ساكنه في", "اسكن في", "اعيش في",
+               "انا من", "نحن من", "قادم من", "قادمه من", "جاي من", "مسافر من", "مسافره من")
+_BEFORE_BLOCK = {"to", "want", "wants", "wanted", "would", "love", "like", "dont", "don", "not", "never", "no", "longer", "developer", "agent", "company",
+                 "broker", "he", "she", "they", "where", "if", "when", "should", "can", "could", "will", "ل", "يبغى", "ابغى", "ابي", "المطور", "الوكيل"}
+_AFTER_PLAN = {"next", "tomorrow", "soon", "tonight", "later", "weekend", "قريبا", "بكرا", "غدا"}
 _PUNCT = re.compile(r"[^\w\s]", re.U)
+_SENTENCE = re.compile(r"[.!?؟\n]+")
 
 
 def _prep(text: str) -> str:
-    t = _fold(text)
-    t = t.replace("'", " ").replace("’", " ")
+    t = _fold(text).replace("'", " ").replace("’", " ")
     return re.sub(r"\s+", " ", _PUNCT.sub(" ", t)).strip()
 
 
+_ALL_PHRASES = tuple(dict.fromkeys((*_PHRASES_EN, *(_prep(p) for p in _PHRASES_AR))))
+
+
+def _starts_with_alias(tail: str, city: City) -> int:
+    """Length of the alias the tail starts with (at a word boundary), else 0."""
+    for k in sorted((_prep(x) for x in (city.name, *city.aliases)), key=len, reverse=True):
+        if k and (tail == k or tail.startswith(k + " ")):
+            return len(k)
+    return 0
+
+
 def _from_text(text: str) -> Origin | None:
-    t = f" {_prep(text)} "
-    best: tuple[int, City] | None = None
-    for phrase in (*_PHRASES_EN, *(_prep(p) for p in _PHRASES_AR)):
-        for m in re.finditer(rf"(?<!\w){re.escape(phrase)} ", t):
-            tail = " ".join(t[m.end():].split(" ")[:4])
-            for city in find_cities(tail):
-                if any(tail.startswith(_prep(k)) for k in (city.name, *city.aliases) if _prep(k)):      # the city must come right after the phrase
-                    if best is None or m.start() < best[0]:
-                        best = (m.start(), city)
-                    break
-    return Origin(best[1].country, best[1].id, "text") if best else None
+    for sentence in _SENTENCE.split(text):
+        t = f" {_prep(sentence)} "
+        best: tuple[int, City] | None = None
+        for phrase in _ALL_PHRASES:
+            for m in re.finditer(rf"(?<!\w){re.escape(phrase)} ", t):
+                before = t[:m.start()].split()[-3:]
+                if any(w in _BEFORE_BLOCK for w in before):
+                    continue
+                rest = t[m.end():m.end() + 160].split(" ")
+                tail = " ".join(rest[:4])
+                for city in find_cities(tail):
+                    n = _starts_with_alias(tail, city)
+                    if n:
+                        after = tail[n:].split()[:2]
+                        if any(w in _AFTER_PLAN for w in after):
+                            break                                         # "I'm in Dubai next week": a plan, not a residence
+                        if best is None or m.start() < best[0]:
+                            best = (m.start(), city)
+                        break
+        if best:
+            return Origin(best[1].country, best[1].id, "text")
+    return None
 
 
 def _from_form(country, city) -> Origin | None:
-    c = resolve(city) if isinstance(city, str) and city.strip() and len(city) <= 80 else None
+    c = None
+    if isinstance(city, str) and city.strip() and len(city) <= 80:
+        c = resolve(city) or next((x for x in _catalogue_ids() if x.id == city.strip().lower()), None)
+    cc = resolve_country(country)
     if c:
+        if cc and cc != c.country:
+            return Origin(cc, None, "form")          # the person's own country outranks an ambiguous city name ("Birmingham")
         return Origin(c.country, c.id, "form")
-    if isinstance(country, str) and 1 < len(country.strip()) <= 60:
-        key = country.strip()
-        if key.upper() in COUNTRIES:
-            return Origin(key.upper(), None, "form")
-        for iso, (name, _cur) in COUNTRIES.items():
-            if name.lower() == key.lower():
-                return Origin(iso, None, "form")
-    return None
+    return Origin(cc, None, "form") if cc else None
+
+
+def _catalogue_ids():
+    from .cities import catalogue
+    return catalogue()
 
 
 def resolve_origin(text: str | None, phone: str | None, country: str | None = None, city: str | None = None) -> Origin | None:

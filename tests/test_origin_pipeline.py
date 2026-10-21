@@ -58,7 +58,7 @@ def test_weaker_basis_never_overrides_stronger(pipe):
     pipe.ingest(Signal(platform="reddit", external_id="x", source_type="public_post", phone="0501112222", text="I'm in London, " + BUY))
     assert (lead(pipe, a)["origin_country"], lead(pipe, a)["origin_basis"]) == ("PK", "form")
     b = pipe.ingest(Signal(platform="reddit", external_id="y", source_type="public_post", phone="0503334444", text="I'm in London, " + BUY)).lead_id
-    assert lead(pipe, b)["origin_basis"] == "phone" or lead(pipe, b)["origin_basis"] == "text"
+    assert (lead(pipe, b)["origin_country"], lead(pipe, b)["origin_basis"]) == ("AE", "phone")        # a UAE number: domestic, and it outranks the text origin
     pipe.ingest(sig(3, phone="0503334444", extra={"country": "PK"}))
     assert (lead(pipe, b)["origin_country"], lead(pipe, b)["origin_basis"]) == ("PK", "form")
     c = pipe.ingest(sig(4, phone="+447911000000")).lead_id

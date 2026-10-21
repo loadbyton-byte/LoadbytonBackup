@@ -5,11 +5,16 @@ import statistics
 from datetime import datetime, timedelta
 
 from .db import DB
-from .markets.cities import COUNTRIES, catalogue, resolve
+from .markets.cities import catalogue, resolve
+from .markets.origin import resolve_country
 from .models import utcnow
 from .scoring import SLA_MINUTES
 
 QUALIFIED = ("HOT", "WARM")
+
+
+class MarketTagError(ValueError):
+    """Unknown or inconsistent country/city on a spend row."""
 
 
 def record_spend(db: DB, source: str, campaign: str | None, period: str, amount_aed: float,
@@ -18,17 +23,18 @@ def record_spend(db: DB, source: str, campaign: str | None, period: str, amount_
     if amount_aed < 0:
         raise ValueError("amount_aed must be >= 0")
     cc, city_id = None, None
+    want = resolve_country(country) if country else None
+    if country and not want:
+        raise MarketTagError(f"unknown country {country!r}")
     if city:
         found = resolve(city) or next((c for c in catalogue() if c.id == city.lower()), None)
         if not found:
-            raise ValueError(f"unknown city {city!r}")
-        if country and country.upper() != found.country:
-            raise ValueError(f"city {found.name} is in {found.country}, not {country.upper()}")
+            raise MarketTagError(f"unknown city {city!r}")
+        if want and want != found.country:
+            raise MarketTagError(f"city {found.name} is in {found.country}, not {want}")
         cc, city_id = found.country, found.id
-    elif country:
-        if country.upper() not in COUNTRIES:
-            raise ValueError(f"unknown country {country!r}")
-        cc = country.upper()
+    else:
+        cc = want
     with db.tx() as c:
         return c.execute("INSERT INTO spend(source,campaign,period,amount_aed,country,city) VALUES(?,?,?,?,?,?)",
                          (source, campaign, period, amount_aed, cc, city_id)).lastrowid

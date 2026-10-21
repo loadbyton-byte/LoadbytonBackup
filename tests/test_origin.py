@@ -15,7 +15,9 @@ def test_precedence_form_over_phone_over_text():
 
 
 def test_form_city_fixes_country_and_unresolvable_is_ignored():
-    assert resolve_origin(None, None, country="PK", city="London").country == "GB"
+    o = resolve_origin(None, None, country="PK", city="London")
+    assert (o.country, o.city) == ("PK", None)                                  # the person's own country outranks the city
+    assert resolve_origin(None, None, city="London").country == "GB"
     assert resolve_origin(None, None, country="Narnia", city="Nowhereville") is None
     assert resolve_origin(None, None, country="india") == Origin("IN", None, "form")
     assert resolve_origin(None, None, country="IN") == Origin("IN", None, "form")
@@ -34,7 +36,7 @@ def test_calling_codes_cover_catalogue():
     assert len(set(CALLING_CODES.values())) == len(CALLING_CODES)             # no two countries share a code here
 
 
-@pytest.mark.parametrize("text", ["i am in London", "I'm in London looking for a villa", "we're in London", "based in London", "living in London",
+@pytest.mark.parametrize("text", ["i am in London", "I'm in London looking for a villa", "we're in London", "I'm based in London", "I am living in London",
                                   "currently in London", "moving from London", "relocating from London", "originally from London",
                                   "I'm from London", "writing from London", "Hello! I'm in London, budget AED 2M"])
 def test_self_location_phrases_en(text):

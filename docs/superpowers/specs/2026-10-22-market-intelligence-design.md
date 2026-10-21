@@ -18,7 +18,7 @@ An agency wants to know **where its Dubai-property demand comes from** (country 
 `resolve_origin(text: str | None, phone: str | None, country: str | None = None, city: str | None = None) -> Origin | None`
 `Origin(country: str, city: str | None, basis: "form" | "phone" | "text")` — `country` is ISO 3166 alpha-2, `city` a catalogue city id (slug).
 
-Precedence, strongest first; the first that yields a country wins:
+Precedence, strongest first; the first that yields a country wins. *Hardening after review:* phrases need a first-person subject ("I live in", not bare "live in"); a phrase preceded by `to`, `want`, `don't`, `developer`, `agent`… or followed by a plan ("next week") is ignored; form `country` accepts names and common aliases (UK, UAE, USA, KSA…); a form `country` that conflicts with the `city` keeps the country and drops the city; Arabic-Indic digits in phone numbers are read. A form `city` field is taken literally as the person's city: if an agency's form uses it for the city they want to *buy* in, rename that field.
 
 1. **form** — explicit `country` (ISO2 or catalogue country name) and/or `city` (resolved with `cities.resolve(name, fuzzy=False)`; a resolved city fixes the country). Unresolvable values are ignored, never stored.
 2. **phone** — E.164 number → country by longest calling-code prefix over the countries in the catalogue. `+971` → `AE` (domestic). `+1` (shared US/Canada/Caribbean) and any unmapped prefix → no result. `+7` → `KZ` for `+76`/`+77`, else `RU`. Country only (no city).
@@ -47,8 +47,8 @@ Per **market** (a country, and each city within it that has leads):
 |---|---|
 | `leads`, `qualified`, `won` | counts; qualified = tier HOT/WARM (same as ROI), `won` = status `won` |
 | `avg_score` | mean lead score, 1 decimal |
-| `share_pct` | leads ÷ leads with a known origin, integer % |
-| `growth_pct` | last 28 days vs the 28 before, `null` when the earlier window has < 3 leads |
+| `share_pct` | leads ÷ leads with a known origin, integer % (countries also carry `intl_share_pct`: share among international leads, used for ranking) |
+| `growth_pct` | last 28 days vs the 28 before, `null` when the earlier window has < 3 leads or when a `period` is given |
 | `spend_aed`, `cost_per_lead`, `cost_per_qualified`, `cost_per_won` | from spend rows tagged with that country/city (city-tagged spend counts for the city and its country); ratios `null` when nothing to divide by or no tagged spend |
 | `language`, `currency`, `timezone`, `contact_window` | from the catalogue (country-level: its most-tiered city); `contact_window` = `09:00–20:00` local expressed in UAE time for today, e.g. `"10:00–21:00 UAE"` |
 | `tier` | the catalogue's editorial tier (city) or its best city's tier (country) |
@@ -63,7 +63,7 @@ Top-level: `known_origin_pct` (leads with origin ÷ all leads, `null` when no le
 - `score = (leads × measured + 10 × prior) / (leads + 10)`, rounded to 1 decimal.
 - Each focus row carries `basis`: `"measured"` when `leads ≥ 10`, otherwise `"editorial"`, the `leads` sample size, and `reasons[]` (short English keys the UI translates: `high_share`, `high_quality`, `growing`, `low_sample`, `editorial_prior`).
 - `focus` = **countries** ranked by `score` (ties: more leads, then name), limited to `limit`. *Ruling during implementation:* most origins come from phone numbers, which identify a country but not a city, so ranking cities would leave the list nearly empty; each row names its `top_city` when known, and a country's prior uses its best catalogue tier. Cities appear in `cities` and `untapped`.
-- `untapped` = catalogue cities with tier ≤ 2, country ≠ `AE`, **zero** leads, ordered by tier then name, at most 10.
+- Countries with spend tagged but **zero leads** are not ranked. `untapped` = catalogue cities with tier ≤ 2, country ≠ `AE`, **zero** leads, whose country does not already have ≥ 3 leads of unknown city, ordered by tier then name, at most 10.
 
 All numbers are deterministic from the workspace data and the catalogue; no randomness, no clock beyond `now`.
 

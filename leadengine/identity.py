@@ -5,13 +5,14 @@ import hashlib
 import re
 
 _DIGITS = re.compile(r"\D+")
+_NATIVE_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")      # Arabic-Indic and Persian digits
 
 
 def normalize_phone(raw: str | None) -> str | None:
     """Normalise UAE-style numbers to E.164. Returns None if it doesn't look like a valid number."""
     if not raw:
         return None
-    s = raw.strip()
+    s = raw.strip().translate(_NATIVE_DIGITS)
     plus = s.startswith("+")
     d = _DIGITS.sub("", s)
     if d.startswith("00"):

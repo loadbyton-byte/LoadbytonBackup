@@ -38,5 +38,9 @@ def test_spend_tagging_over_http():
 
 def test_backfill_over_http():
     c = client()
-    r = c.post("/markets/backfill-origin")
-    assert r.status_code == 200 and r.json() == {"updated": 0, "unresolved": 0}
+    assert c.post("/markets/backfill-origin").json() == {"updated": 0, "unresolved": 0}
+    app = c.app
+    with app.state.db.tx() as cx:
+        cx.execute("INSERT INTO leads(first_seen,last_seen,platforms,phone) VALUES('2026-10-01T00:00:00+00:00','2026-10-01T00:00:00+00:00','[]','+919876543210')")
+    assert c.post("/markets/backfill-origin").json() == {"updated": 1, "unresolved": 0}
+    assert c.get("/markets/intel").json()["countries"][0]["id"] == "IN"

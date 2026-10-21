@@ -30,7 +30,7 @@ from .outreach import draft
 from .pipeline import Pipeline
 from .radar import demand_radar
 from .viewings import ViewingConflict, feed_token, list_viewings, schedule as schedule_viewing, to_ics
-from .roi import record_spend, roi_report
+from .roi import MarketTagError, record_spend, roi_report
 
 DASH = Path(__file__).resolve().parent.parent / "dashboard" / "index.html"
 
@@ -483,7 +483,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     @app.get("/markets/intel/{country}")
     def markets_intel_country(country: str, _=Depends(auth)):
         cc = country.upper()
-        rep = market_report(db, limit=100)
+        rep = market_report(db, limit=None)
         row = next((r for r in rep["countries"] if r["id"] == cc), None)
         if not row:
             raise HTTPException(404, "no leads or spend for that country")
@@ -521,8 +521,10 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     def spend(p: SpendIn, _=Depends(auth)):
         try:
             return {"id": record_spend(db, p.source, p.campaign, p.period, p.amount_aed, p.country, p.city)}
+        except MarketTagError as e:
+            raise HTTPException(422, str(e))
         except ValueError as e:
-            raise HTTPException(422 if ("country" in str(e) or "city" in str(e)) else 400, str(e))
+            raise HTTPException(400, str(e))
 
     @app.get("/roi")
     def roi(period: str | None = None, _=Depends(auth)):
