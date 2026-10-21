@@ -62,7 +62,7 @@ Top-level: `known_origin_pct` (leads with origin ÷ all leads, `null` when no le
 - `prior = {1: 80, 2: 55, 3: 30}[tier]`.
 - `score = (leads × measured + 10 × prior) / (leads + 10)`, rounded to 1 decimal.
 - Each focus row carries `basis`: `"measured"` when `leads ≥ 10`, otherwise `"editorial"`, the `leads` sample size, and `reasons[]` (short English keys the UI translates: `high_share`, `high_quality`, `growing`, `low_sample`, `editorial_prior`).
-- `focus` = cities ranked by `score` (ties: more leads, then name), limited to `limit`.
+- `focus` = **countries** ranked by `score` (ties: more leads, then name), limited to `limit`. *Ruling during implementation:* most origins come from phone numbers, which identify a country but not a city, so ranking cities would leave the list nearly empty; each row names its `top_city` when known, and a country's prior uses its best catalogue tier. Cities appear in `cities` and `untapped`.
 - `untapped` = catalogue cities with tier ≤ 2, country ≠ `AE`, **zero** leads, ordered by tier then name, at most 10.
 
 All numbers are deterministic from the workspace data and the catalogue; no randomness, no clock beyond `now`.
