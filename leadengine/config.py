@@ -65,6 +65,19 @@ class Settings:
     whatsapp_send_enabled: bool = field(default_factory=lambda: _env("WHATSAPP_SEND_ENABLED").lower() in ("1", "true", "yes"))
     whatsapp_token: str = field(default_factory=lambda: _env("WHATSAPP_TOKEN"))
     whatsapp_phone_id: str = field(default_factory=lambda: _env("WHATSAPP_PHONE_ID"))
+    # Platform mode (accounts + workspaces). Legacy single-tenant mode when CONTROL_DB is empty.
+    control_db: str = field(default_factory=lambda: _env("CONTROL_DB"))
+    data_dir: str = field(default_factory=lambda: _env("DATA_DIR", "data"))
+    encryption_key: str = field(default_factory=lambda: _env("ENCRYPTION_KEY"))
+    base_url: str = field(default_factory=lambda: _env("BASE_URL", "http://127.0.0.1:8000"))
+    dev_insecure_cookies: bool = field(default_factory=lambda: _env("DEV_INSECURE_COOKIES") in ("1", "true", "yes"))
+    signup_mode: str = field(default_factory=lambda: _env("SIGNUP_MODE", "open"))          # open | invite
+    mail_backend: str = field(default_factory=lambda: _env("MAIL_BACKEND", "console"))     # console | smtp
+    mail_from: str = field(default_factory=lambda: _env("MAIL_FROM", "DigitalBurj Leads <no-reply@localhost>"))
+    smtp_host: str = field(default_factory=lambda: _env("SMTP_HOST"))
+    smtp_port: int = field(default_factory=lambda: int(_env("SMTP_PORT", "587") or 587))
+    smtp_user: str = field(default_factory=lambda: _env("SMTP_USER"))
+    smtp_password: str = field(default_factory=lambda: _env("SMTP_PASSWORD"))
     # Connectors
     reddit_client_id: str = field(default_factory=lambda: _env("REDDIT_CLIENT_ID"))
     reddit_client_secret: str = field(default_factory=lambda: _env("REDDIT_CLIENT_SECRET"))
