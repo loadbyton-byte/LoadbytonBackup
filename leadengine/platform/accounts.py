@@ -81,6 +81,7 @@ INVITE_TTL_S = 7 * 86400
 RESET_TTL_S = 3600
 RESET_LIMIT, RESET_WINDOW_S = 5, 3600
 ROLES_INVITABLE = ("manager", "agent")
+PW_CHECK_LIMIT, PW_CHECK_WINDOW_S = 10, 900
 
 
 def normalize_email(email: str) -> str:
@@ -194,13 +195,20 @@ class AccountService:
             c.execute("UPDATE users SET failed_logins=0, locked_until=0 WHERE id=?", (user["id"],))
         if user["totp_enabled"]:
             return LoginResult("mfa_required", None, self._issue_token(user["id"], "mfa", MFA_TTL_S))
-        return LoginResult("ok", self._new_session(user["id"], ip), None)
+        return self._ok_session(user["id"], ip)
+
+    def _ok_session(self, user_id: int, ip: str) -> LoginResult:
+        try:
+            return LoginResult("ok", self._new_session(user_id, ip), None)
+        except AccountError:
+            return FAILED                                  # e.g. workspace deleted: same answer as a wrong password
 
     def _fail(self, user, ip: str) -> None:
-        n = user["failed_logins"] + 1
-        lock = min(LOCK_BASE_S * 2 ** (n - LOCK_AFTER), LOCK_MAX_S) if n >= LOCK_AFTER else 0
-        with self.control.tx() as c:
-            c.execute("UPDATE users SET failed_logins=?, locked_until=? WHERE id=?", (n, self.now() + lock if lock else 0, user["id"]))
+        with self.control.tx() as c:                      # atomic increment: parallel failures cannot lose counts
+            n = c.execute("UPDATE users SET failed_logins=failed_logins+1 WHERE id=? RETURNING failed_logins", (user["id"],)).fetchone()[0]
+            lock = min(LOCK_BASE_S * 2 ** (n - LOCK_AFTER), LOCK_MAX_S) if n >= LOCK_AFTER else 0
+            if lock:
+                c.execute("UPDATE users SET locked_until=? WHERE id=?", (self.now() + lock, user["id"]))
         self.control.audit("login_failed", user_id=user["id"], ip=ip, reason="password", failures=n)
 
     def _new_session(self, user_id: int, ip: str = "") -> str:
@@ -282,12 +290,18 @@ class AccountService:
         self.control.audit("password_reset", user_id=uid)
         return True
 
+    def _pw_gate(self, user_id: int) -> None:
+        if self._count(f"pw:{user_id}", PW_CHECK_WINDOW_S) >= PW_CHECK_LIMIT:
+            raise AccountError("rate_limited", "Too many wrong passwords. Try again later.")
+
     def change_password(self, user_id: int, old_password: str, new_password: str, keep_session: str | None = None) -> bool:
+        self._pw_gate(user_id)
         problem = check_password_policy(new_password)
         if problem:
             raise AccountError("weak_password", problem)
         row = self.control.one("SELECT password_hash FROM users WHERE id=?", (user_id,))
         if not row or not verify_password(old_password, row["password_hash"] or _dummy_hash()):
+            self._record(f"pw:{user_id}")
             return False
         self._set_password(user_id, new_password, keep_session)
         self.control.audit("password_changed", user_id=user_id)
@@ -326,8 +340,10 @@ class AccountService:
         return codes
 
     def mfa_disable(self, user_id: int, password: str) -> bool:
+        self._pw_gate(user_id)
         row = self.control.one("SELECT password_hash FROM users WHERE id=?", (user_id,))
         if not row or not verify_password(password, row["password_hash"] or _dummy_hash()):
+            self._record(f"pw:{user_id}")
             return False
         with self.control.tx() as c:
             c.execute("UPDATE users SET totp_enabled=0, totp_secret_enc=NULL, totp_last_step=0 WHERE id=?", (user_id,))
@@ -361,7 +377,7 @@ class AccountService:
         self._consume_token(mfa_token, "mfa")
         with self.control.tx() as c:
             c.execute("UPDATE users SET failed_logins=0, locked_until=0 WHERE id=?", (user["id"],))
-        return LoginResult("ok", self._new_session(user["id"], ip), None)
+        return self._ok_session(user["id"], ip)
 
     # ------------------------------------------------------------------ team invites
     def _role_of(self, user_id: int, tenant_id: int) -> str | None:

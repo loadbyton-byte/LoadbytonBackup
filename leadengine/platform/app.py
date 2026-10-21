@@ -5,14 +5,18 @@ instance a request reaches: it resolves the caller (session cookie or workspace 
 path it normalised, and forwards that same normalised path. Nothing in the tenant app ever sees credentials or another workspace."""
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import logging
+import random
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 
 from ..config import Settings
@@ -27,6 +31,8 @@ log = logging.getLogger("leadengine.platform")
 
 SESSION_COOKIE, CSRF_COOKIE, CSRF_HEADER = "dbl_session", "dbl_csrf", "x-csrf-token"
 MAX_JSON = 16 * 1024
+LIMIT_AUTH, LIMIT_PUBLIC, LIMIT_API, LIMIT_OTHER = 32 * 1024, 256 * 1024, 8 * 1024 * 1024, 64 * 1024     # bytes buffered per request
+REGISTER_FLOOR_S, FORGOT_FLOOR_S = 0.4, 0.15      # minimum response time: new and existing addresses look alike
 # First path segment of the workspace API (what the dispatcher takes over). Everything else belongs to the platform app.
 TENANT_PREFIXES = frozenset("leads agents tasks roi spend inventory viewings viewings.ics radar stats audit ingest connectors tools markets "
                             "maintenance demo overview".split())
@@ -40,6 +46,39 @@ class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str = ""):
         super().__init__(code)
         self.status, self.code, self.message = status, code, message or code
+
+
+def session_cookie(header: str) -> str | None:
+    """The one session cookie, or None if absent or duplicated (a duplicate could be planted from a sibling origin)."""
+    vals = [v for n, _, v in (p.strip().partition("=") for p in header.split(";")) if n == SESSION_COOKIE]
+    return vals[0] if len(vals) == 1 and vals[0] else None
+
+
+async def _read_body(receive, limit: int):
+    """Buffer the request body up to `limit`. Returns bytes, or None when the limit is exceeded or the client went away."""
+    chunks, total = [], 0
+    while True:
+        m = await receive()
+        if m["type"] != "http.request":
+            return None
+        total += len(m.get("body", b""))
+        if total > limit:
+            return None
+        chunks.append(m.get("body", b""))
+        if not m.get("more_body"):
+            return b"".join(chunks)
+
+
+def _replay(body: bytes, receive):
+    sent = False
+
+    async def r():
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return await receive()
+    return r
 
 
 def _json(status: int, body: dict) -> JSONResponse:
@@ -71,6 +110,13 @@ class Dispatcher:
         raw = scope.get("raw_path")
         raw_path = raw.decode("latin-1") if isinstance(raw, (bytes, bytearray)) else scope["path"]
         first = raw_path.split("/", 2)[1] if raw_path.startswith("/") and len(raw_path) > 1 else ""
+        limit = LIMIT_PUBLIC if first == "t" else LIMIT_API if first in TENANT_PREFIXES else LIMIT_AUTH if raw_path.startswith("/auth/") else LIMIT_OTHER
+        if scope["method"].upper() not in SAFE_METHODS:
+            declared = dict(scope["headers"]).get(b"content-length", b"")
+            body = None if declared.isdigit() and int(declared) > limit else await _read_body(receive, limit)
+            if body is None:
+                return await self._reply(_json(413, {"error": "too_large", "message": "Request body too large."}), scope, receive, send)
+            receive = _replay(body, receive)
         if first == "t":
             return await self._public(scope, receive, send, raw_path)
         if first in TENANT_PREFIXES:
@@ -151,11 +197,8 @@ class Dispatcher:
             await self._reply(_not_found(), scope, receive, send)
 
     def _session(self, headers: dict) -> SessionInfo | None:
-        for part in headers.get(b"cookie", b"").decode("latin-1").split(";"):
-            name, _, value = part.strip().partition("=")
-            if name == SESSION_COOKIE and value:
-                return self.accounts.resolve_session(value)
-        return None
+        raw = session_cookie(headers.get(b"cookie", b"").decode("latin-1"))
+        return self.accounts.resolve_session(raw) if raw else None
 
 
 # ---------------------------------------------------------------------------- factory
@@ -217,12 +260,20 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
             raise ApiError(400, "invalid_json", "Expected a JSON object.")
         return data
 
+    async def run(fn, *a):
+        return await run_in_threadpool(fn, *a)                  # scrypt / SQLite work never blocks the event loop
+
+    async def floor(start: float, seconds: float) -> None:
+        rest = seconds * (1 + random.random() * 0.2) - (time.perf_counter() - start)
+        if rest > 0:
+            await asyncio.sleep(rest)
+
     def text(d: dict, key: str, limit: int = 300) -> str:
         v = d.get(key, "")
         return v[:limit] if isinstance(v, str) else ""
 
     def current(request: Request, csrf: bool = False) -> tuple[SessionInfo, str]:
-        raw = request.cookies.get(SESSION_COOKIE, "")
+        raw = session_cookie(request.headers.get("cookie", "")) or ""
         info = accounts.resolve_session(raw)
         if info is None:
             raise ApiError(401, "unauthorized", "Sign in required.")
@@ -231,7 +282,7 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
         return info, raw
 
     def start_session(request: Request, token: str) -> JSONResponse:
-        old = request.cookies.get(SESSION_COOKIE)
+        old = session_cookie(request.headers.get("cookie", ""))
         if old:
             accounts.logout(old)                                  # a pre-set session id is never adopted
         secure = not s.dev_insecure_cookies
@@ -256,8 +307,12 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
         if s.signup_mode == "invite":
             raise ApiError(403, "signup_closed", "Sign-up is by invitation only.")
         d = await body(request)
-        accounts.register(text(d, "email", 254), text(d, "password", 300), text(d, "name", 200), text(d, "agency_name", 200),
-                          text(d, "lang", 5) or "en", client_ip(request))
+        t0 = time.perf_counter()
+        try:
+            await run(accounts.register, text(d, "email", 254), text(d, "password", 300), text(d, "name", 200), text(d, "agency_name", 200),
+                      text(d, "lang", 5) or "en", client_ip(request))
+        finally:
+            await floor(t0, REGISTER_FLOOR_S)
         return _json(200, {"ok": True})                           # identical for new and existing addresses
 
     @app.post("/auth/verify")
@@ -269,12 +324,12 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
     @app.post("/auth/login")
     async def login(request: Request):
         d = await body(request)
-        return login_result(request, accounts.login(text(d, "email", 254), text(d, "password", 300), client_ip(request)))
+        return login_result(request, await run(accounts.login, text(d, "email", 254), text(d, "password", 300), client_ip(request)))
 
     @app.post("/auth/login/mfa")
     async def login_mfa(request: Request):
         d = await body(request)
-        return login_result(request, accounts.login_mfa(text(d, "mfa_token", 200), text(d, "code", 40), client_ip(request)))
+        return login_result(request, await run(accounts.login_mfa, text(d, "mfa_token", 200), text(d, "code", 40), client_ip(request)))
 
     @app.post("/auth/logout")
     async def logout(request: Request):
@@ -287,13 +342,16 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
 
     @app.post("/auth/forgot")
     async def forgot(request: Request):
-        accounts.request_reset(text(await body(request), "email", 254), client_ip(request))
+        d = await body(request)
+        t0 = time.perf_counter()
+        await run(accounts.request_reset, text(d, "email", 254), client_ip(request))
+        await floor(t0, FORGOT_FLOOR_S)
         return _json(200, {"ok": True})
 
     @app.post("/auth/reset")
     async def reset(request: Request):
         d = await body(request)
-        if not accounts.reset_password(text(d, "token", 200), text(d, "password", 300)):
+        if not await run(accounts.reset_password, text(d, "token", 200), text(d, "password", 300)):
             raise ApiError(400, "invalid_token", "This link is not valid or has expired.")
         return _json(200, {"ok": True})
 
@@ -311,7 +369,7 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
     async def password(request: Request):
         info, raw = current(request, csrf=True)
         d = await body(request)
-        if not accounts.change_password(info.user_id, text(d, "old_password", 300), text(d, "new_password", 300), keep_session=raw):
+        if not await run(lambda: accounts.change_password(info.user_id, text(d, "old_password", 300), text(d, "new_password", 300), keep_session=raw)):
             raise ApiError(400, "invalid_credentials", "Your current password is not correct.")
         return _json(200, {"ok": True})
 
@@ -329,7 +387,7 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
     @app.post("/auth/mfa/disable")
     async def mfa_disable(request: Request):
         info, _ = current(request, csrf=True)
-        if not accounts.mfa_disable(info.user_id, text(await body(request), "password", 300)):
+        if not await run(accounts.mfa_disable, info.user_id, text(await body(request), "password", 300)):
             raise ApiError(400, "invalid_credentials", "Your password is not correct.")
         return _json(200, {"ok": True})
 
@@ -345,7 +403,7 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
     @app.post("/auth/invite/accept")
     async def invite_accept(request: Request):
         d = await body(request)
-        accounts.accept_invite(text(d, "token", 200), text(d, "password", 300), text(d, "name", 200))
+        await run(accounts.accept_invite, text(d, "token", 200), text(d, "password", 300), text(d, "name", 200))
         return _json(200, {"ok": True})
 
     @app.post("/auth/api-key")

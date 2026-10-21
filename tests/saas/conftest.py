@@ -70,3 +70,10 @@ def token_from(mail: dict) -> str:
 
 
 PW = "correct horse battery"
+
+
+@pytest.fixture(autouse=True)
+def fast_floors(monkeypatch):
+    from leadengine.platform import app as appmod
+    monkeypatch.setattr(appmod, "REGISTER_FLOOR_S", 0.03)
+    monkeypatch.setattr(appmod, "FORGOT_FLOOR_S", 0.03)

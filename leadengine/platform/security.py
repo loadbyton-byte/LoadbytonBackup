@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import threading
 import hmac
 import os
 import secrets
@@ -25,7 +26,15 @@ def check_password_policy(password: str) -> str | None:
     return None
 
 
+_SCRYPT_SLOTS = threading.BoundedSemaphore(4)       # bounds concurrent 32 MiB hashes so a login flood cannot exhaust memory/CPU
+
+
 def _scrypt(password: str, salt: bytes, n: int, r: int, p: int) -> bytes:
+    with _SCRYPT_SLOTS:
+        return _scrypt_raw(password, salt, n, r, p)
+
+
+def _scrypt_raw(password: str, salt: bytes, n: int, r: int, p: int) -> bytes:
     return hashlib.scrypt(password.encode(), salt=salt, n=n, r=r, p=p, maxmem=SCRYPT_MAXMEM, dklen=32)
 
 

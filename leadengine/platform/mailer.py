@@ -29,7 +29,7 @@ class ConsoleMailer:
     def send(self, to: str, subject: str, text: str, html: str | None = None) -> None:
         _check(to, subject)
         self.outbox.append({"to": to, "subject": subject, "text": text, "html": html})
-        log.info("mail to=%s subject=%s\n%s", to, subject, text)
+        log.info("mail to=%s subject=%s (body not logged)", to, subject)
 
 
 class SmtpMailer:

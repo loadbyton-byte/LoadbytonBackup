@@ -30,6 +30,13 @@ SETTING_KEYS: dict[str, tuple[type, bool]] = {
 }
 
 
+_BLANK: dict = {
+    "agent_name": "", "brn": "", "trakheesi": "", "capture_origins": [], "dnc_file": "", "whatsapp_token": "", "whatsapp_phone_id": "",
+    "whatsapp_send_enabled": False, "meta_app_secret": "", "meta_verify_token": "", "meta_page_token": "", "form_webhook_secret": "",
+    "reddit_client_id": "", "reddit_client_secret": "", "apify_token": "",
+}
+
+
 @dataclass(frozen=True)
 class Tenant:
     id: int
@@ -117,8 +124,12 @@ class TenantManager:
             raise KeyError(tenant_id)
         overlay = {r["key"]: json.loads(self.enc.decrypt(r["value_enc"])) for r in
                    self.control.q("SELECT key,value_enc FROM tenant_settings WHERE tenant_id=?", (tenant_id,)) if r["key"] in SETTING_KEYS}
-        return dataclasses.replace(self.base, api_key="", db_path=t["data_path"], control_db="",
-                                   public_url=f"{self.base.base_url.rstrip('/')}/t/{t['public_key']}", **overlay)
+        name = self.control.one("SELECT name FROM tenants WHERE id=?", (tenant_id,))["name"]
+        # Start from a clean slate: nothing the operator's environment holds (connector credentials, webhook secrets, licence
+        # identity, DNC file) may leak into a workspace. Only what the workspace itself set is applied.
+        clean = dict(_BLANK, agency_name=name)
+        return dataclasses.replace(self.base, **{**clean, **overlay}, api_key="", db_path=t["data_path"], control_db="",
+                                   public_url=f"{self.base.base_url.rstrip('/')}/t/{t['public_key']}")
 
     # ------------------------------------------------------------------ runtimes
     def _runtime(self, tenant_id: int) -> _Runtime:
