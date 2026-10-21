@@ -109,6 +109,7 @@ URGENCY_RULES: list[tuple[re.Pattern[str], int]] = [
     (re.compile(normalize(r"\bthis (week|weekend)\b|هذا الاسبوع")), 7),
     (re.compile(normalize(r"\bnext (week)\b|الاسبوع الجاي|الاسبوع القادم")), 10),
     (re.compile(normalize(r"\bnext month\b|\bend of (this )?month\b|الشهر الجاي|الشهر القادم")), 30),
+    (re.compile(normalize(r"\bthis month\b|\b(within|in) a month\b|هذا الشهر|خلال شهر")), 30),
     (re.compile(normalize(r"\bthis (quarter)\b")), 60),
     (re.compile(normalize(r"\b(end of|by) (the )?(year|q4)\b|\bthis year\b|نهايه السنه|هذه السنه")), 120),
 ]

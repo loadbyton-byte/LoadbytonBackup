@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS activities(
   id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER REFERENCES leads(id) ON DELETE CASCADE,
   ts TEXT, kind TEXT, channel TEXT, note TEXT
 );
+CREATE TABLE IF NOT EXISTS web_sessions(
+  token_hash TEXT PRIMARY KEY, state TEXT NOT NULL, lang TEXT, ip_hash TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_web_sessions_expires ON web_sessions(expires_at);
 CREATE TABLE IF NOT EXISTS stats(key TEXT PRIMARY KEY, value INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS spend(
   id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL, campaign TEXT, period TEXT NOT NULL, amount_aed REAL NOT NULL

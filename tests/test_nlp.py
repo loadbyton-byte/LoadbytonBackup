@@ -78,3 +78,10 @@ def test_longest_area_match_wins():
     assert extract_areas("Palm Jumeirah villa")[0] == ["Palm Jumeirah"]
     assert extract_areas("JVC or Jumeirah Village Circle")[0] == ["Jumeirah Village Circle"]
     assert extract_areas("Jumeirah vs Palm Jumeirah")[0] == ["Jumeirah", "Palm Jumeirah"]
+
+
+def test_this_month_is_a_timeline():
+    from leadengine.nlp.intent import parse_timeline
+    from leadengine.nlp.text import normalize
+    for phrase in ("this month", "within a month", "in a month", "هذا الشهر", "خلال شهر"):
+        assert parse_timeline(normalize(phrase)) == 30, phrase

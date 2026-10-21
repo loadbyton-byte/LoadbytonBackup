@@ -140,5 +140,6 @@ class Compliance:
         with self.db.tx() as c:
             n = c.execute("DELETE FROM leads WHERE consent_status!='opted_in' AND last_seen < ?", (public_cut,)).rowcount
             m = c.execute("DELETE FROM leads WHERE consent_status='opted_in' AND last_seen < ?", (optin_cut,)).rowcount
-        self.db.audit("system", "retention_purge", None, public_deleted=n, optin_deleted=m)
-        return {"public_deleted": n, "optin_deleted": m}
+            s = c.execute("DELETE FROM web_sessions WHERE expires_at < ?", (now.isoformat(),)).rowcount
+        self.db.audit("system", "retention_purge", None, public_deleted=n, optin_deleted=m, sessions_deleted=s)
+        return {"public_deleted": n, "optin_deleted": m, "sessions_deleted": s}
