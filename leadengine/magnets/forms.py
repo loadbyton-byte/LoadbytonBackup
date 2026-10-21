@@ -26,18 +26,18 @@ ROWS: dict[str, tuple[str, ...]] = {
 }
 PCT_ROWS = {"dbr_pct", "gross_pct", "net_pct"}
 MAX_AMOUNT = 1e10
-_NUM = re.compile(r"^\d{1,15}(\.\d{1,6})?$")
-_SEPARATORS = str.maketrans("", "", " ,٬،  ")
+_NUM = re.compile(r"^(\d{1,3}([, \u00a0\u202f]\d{3})+|\d{1,15})(\.\d{1,6})?$", re.ASCII)       # plain, or grouped by exactly three digits
+_SEPARATORS = str.maketrans("", "", ", \u00a0\u202f")
 
 
 def parse_number(raw) -> float | None:
     """A plain non-negative number (ASCII or Arabic-Indic digits, thousands separators allowed), else None."""
     if not isinstance(raw, str) or not raw.strip() or len(raw) > 24:
         return None
-    s = raw.strip().translate(_NATIVE_DIGITS).replace("٫", ".").translate(_SEPARATORS)
-    if not _NUM.match(s):
+    s = raw.strip().translate(_NATIVE_DIGITS).replace("٫", ".").replace("٬", ",").replace("،", ",")
+    if not _NUM.fullmatch(s):
         return None
-    v = float(s)
+    v = float(s.translate(_SEPARATORS))
     return v if math.isfinite(v) and v <= MAX_AMOUNT else None
 
 
@@ -56,8 +56,24 @@ def parse(tool: str, data: Mapping[str, str]) -> tuple[dict, str | None]:
     return out, None
 
 
+def in_range(tool: str, i: dict) -> bool:
+    """Sane bounds for every tool (the calculators themselves only check positivity)."""
+    years_ok = lambda y: y == int(y) and 1 <= y <= 35                                    # noqa: E731
+    if tool == "affordability":
+        return years_ok(i["years"]) and 0 <= i["rate"] <= 30 and i["income"] > 0
+    if tool == "mortgage":
+        return years_ok(i["years"]) and 0 <= i["rate"] <= 30 and i["principal"] > 0
+    if tool == "costs":
+        return i["price"] > 0 and 0 <= i["loan"] <= i["price"]
+    if tool == "yield":
+        return i["price"] > 0 and 0 <= i["rent"] <= i["price"] and 0 <= i["service"] <= i["price"] and 0 <= i["vacancy"] <= 100
+    return False
+
+
 def compute(tool: str, inputs: dict, rates: Rates) -> tuple[dict, str | None]:
     """(result, error key). Range problems surface as `pub.err.range`, never as exceptions."""
+    if not in_range(tool, inputs):
+        return {}, "pub.err.range"
     try:
         if tool == "affordability":
             years = inputs["years"]

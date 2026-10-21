@@ -11,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 from ..db import DB
 
 TTL = timedelta(hours=24)
-MAX_PER_IP = 3
 _TOKEN = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
 
 
@@ -29,10 +28,7 @@ class WebSessions:
 
     def start(self, lang: str, ip: str, now: datetime | None = None) -> str:
         now = now or _now()
-        ip_hash = _h("ip:" + (ip or "?"))
-        live = self.db.one("SELECT COUNT(*) n FROM web_sessions WHERE ip_hash=? AND expires_at>?", (ip_hash, now.isoformat()))["n"]
-        if live >= MAX_PER_IP:
-            raise ValueError("too many sessions")
+        ip_hash = _h("ip:" + (ip or "?"))                       # rate limiting happens in the page layer (a short-window limiter), not by counting rows
         raw = secrets.token_urlsafe(32)
         state = {"step": "intent", "answers": {}, "retries": {}, "lang": lang, "phase": "qa"}
         with self.db.tx() as c:

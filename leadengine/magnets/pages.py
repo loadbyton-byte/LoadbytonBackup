@@ -3,13 +3,14 @@ reached as `/t/<public key>/p…` and in single-agency mode as `/p…`. Results 
 from __future__ import annotations
 
 import html
+import re
 import uuid
 from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 
-from ..capture import MAX_BODY
+from ..capture import MAX_BODY, RateLimiter, _clean
 from ..identity import normalize_email, normalize_phone
 from ..models import Signal
 from ..platform import site
@@ -22,8 +23,11 @@ MAX_PUB_BODY = 8000
 CONCIERGE = "concierge"
 
 
+_ORIGIN = re.compile(r"https?://[A-Za-z0-9.-]{1,200}(:\d{1,5})?", re.ASCII)
+
+
 def csp(origins: list[str]) -> str:
-    ancestors = " ".join(["'self'", *[o for o in origins if o.startswith(("http://", "https://")) and not any(c in o for c in " ;'\"\r\n")]])
+    ancestors = " ".join(["'self'", *[o for o in origins if isinstance(o, str) and _ORIGIN.fullmatch(o)]])
     return ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'none'; base-uri 'none'; form-action 'self'; "
             f"frame-ancestors {ancestors}")
 
@@ -38,6 +42,8 @@ class Pub:
     def __init__(self, db, pipe, settings, limiter, client_ip):
         self.db, self.pipe, self.s, self.limiter, self.client_ip = db, pipe, settings, limiter, client_ip
         self.prefix = urlparse(settings.public_url or "").path.rstrip("/")
+        m = re.search(r"/t/pk_[\w-]+$", self.prefix)                      # platform mode serves assets from the site root, not under /t/<key>
+        self.asset_prefix = self.prefix[:m.start()] if m else self.prefix
 
     def lang(self, request: Request, form: dict | None = None) -> str:
         q = (form or {}).get("lang") or request.query_params.get("lang")
@@ -54,7 +60,7 @@ class Pub:
 
     def respond(self, request: Request, template: str, lang: str, ctx: dict, status: int = 200, private: bool = False) -> HTMLResponse:
         st = site.strings(lang)
-        full = {"base_url": self.origin(request), "prefix": self.prefix, "agency": self.s.agency_name, "agent_line": self.agent_line(lang),
+        full = {"base_url": self.origin(request), "prefix": self.prefix, "asset_prefix": self.asset_prefix, "agency": self.s.agency_name, "agent_line": self.agent_line(lang),
                 "message": "", **ctx}
         if private:
             full["robots"] = '<meta name="robots" content="noindex,nofollow">'
@@ -74,12 +80,19 @@ class Pub:
             pass
 
     async def read_form(self, request: Request) -> dict | None:
-        raw = await request.body()
-        if len(raw) > MAX_PUB_BODY:
+        """URL-encoded fields, {} for any other content type, or None when the body exceeds the limit (checked before and while reading)."""
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > MAX_PUB_BODY:
             return None
+        chunks, total = [], 0
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > MAX_PUB_BODY:
+                return None
+            chunks.append(chunk)
         if not request.headers.get("content-type", "").lower().startswith("application/x-www-form-urlencoded"):
             return {}
-        return {k: v[-1][:1000] for k, v in parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True).items()}
+        return {k: v[-1][:1000] for k, v in parse_qs(b"".join(chunks).decode("utf-8", "replace"), keep_blank_values=True).items()}
 
     # ---- html pieces (every dynamic value escaped)
     def field(self, lang: str, name: str, value: str = "") -> str:
@@ -120,6 +133,7 @@ class Pub:
 def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
     pub = Pub(db, pipe, settings, limiter, client_ip)
     app.state.pub = pub
+    checks = RateLimiter(60, 600)              # looser limiter for validation failures; the shared `limiter` is hit only when a lead is stored
 
     @app.get("/p", include_in_schema=False)
     def index(request: Request):
@@ -133,7 +147,7 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
     async def lead(request: Request):
         lang = pub.lang(request)
         ip = client_ip(request)
-        if limiter.hit(ip):
+        if checks.hit(ip):                                         # loose limit on every attempt; the shared limiter counts only stored leads
             return pub.error(request, lang, "pub.err.rate", 429)
         data = await pub.read_form(request)
         if data is None:
@@ -143,6 +157,8 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
         if tool not in forms.TOOLS:
             return pub.error(request, lang, "pub.err.notfound", 404)
         if data.get("website"):                                    # honeypot: bots fill hidden fields; look successful, store nothing
+            if limiter.hit(ip):
+                return pub.error(request, lang, "pub.err.rate", 429)
             return thanks(request, lang)
         inputs, err = forms.parse(tool, data)
         result, err2 = forms.compute(tool, inputs, settings.rates) if not err else ({}, err)
@@ -152,7 +168,7 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
 
     def _store_lead(request, lang, tool, inputs, result, data):
         st = site.strings(lang)
-        name, phone, email = data.get("name", "").strip()[:100], normalize_phone(data.get("phone")), normalize_email(data.get("email"))
+        name, phone, email = re.sub(r"\s+", " ", _clean(data.get("name"), 100)), normalize_phone(data.get("phone")), normalize_email(data.get("email"))
 
         def again(key):
             return pub.respond(request, "pub_result", lang, _result_ctx(request, lang, tool, inputs, result, name, data.get("phone", ""), data.get("email", ""),
@@ -162,7 +178,9 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
         if not (phone or email):
             return again("pub.err.contact")
         text, extra = forms.summary(tool, inputs, result)
-        res = pipe.ingest(Signal(platform="web", external_id=uuid.uuid4().hex, source_type="lead_form", text=text, author_name=name or None,
+        if limiter.hit(client_ip(request)):                        # the shared (/capture) limiter counts stored leads, not mistakes
+            return pub.error(request, lang, "pub.err.rate", 429)
+        pipe.ingest(Signal(platform="web", external_id=uuid.uuid4().hex, source_type="lead_form", text=text, author_name=name or None,
                                  phone=phone, email=email, consent_marketing=True, consent_text=st["pub.consent"],
                                  campaign=f"lead-magnet:{tool}", extra=extra))
         pub.bump(f"magnet_{tool}_lead")
@@ -258,20 +276,21 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
                                                             "message": f'<p class="okmsg" role="status"><strong>{esc(st["pub.c.declined_h"])}.</strong> {esc(st["pub.c.declined_b"])}</p>',
                                                             "form": f'<p><a class="btn ghost" href="{pub.prefix}/p?lang={lang}">{esc(st["pub.thanks.back"])}</a></p>'}, private=True)
 
+    starts = RateLimiter(10, 600)              # concierge sessions started per IP per 10 minutes
+
     def concierge_get(request, lang):
-        try:
-            token = sessions.start(lang, client_ip(request))
-        except ValueError:
-            return pub.error(request, lang, "pub.err.rate", 429)
-        pub.bump("concierge_start")
-        return qa_page(request, lang, token, sessions.load(token))
+        """Rendering the first question creates no server state: refreshes, prefetchers and link previews cost nothing."""
+        return qa_page(request, lang, "", {"step": "intent", "answers": {}, "retries": {}, "lang": lang, "phase": "qa"})
 
     def answers_text(state, lang):
         a = state["answers"]
+        days = a.get("timeline")
+        # the pipeline's parser reads "within N days/weeks/months" (N <= 99), so write the answer in that form
+        when = None if days is None else (f"within {max(1, days)} days" if days <= 99 else f"within {min(99, max(1, round(days / 30)))} months")
         parts = [f"looking to {a['intent']}" if a.get("intent") else "", f"area {a['area']}" if a.get("area") else "",
-                 f"budget AED {a['budget']:,.0f}" if a.get("budget") else "", f"timeline {a['timeline']} days" if a.get("timeline") is not None else ""]
+                 f"budget AED {a['budget']:,.0f}" if a.get("budget") else "", f"timeline {when}" if when else ""]
         extra = {k: v for k, v in (("looking_to", a.get("intent")), ("area", a.get("area")), ("budget", f"AED {a['budget']:.0f}" if a.get("budget") else None),
-                                   ("timeline", f"{a['timeline']} days" if a.get("timeline") is not None else None)) if v}
+                                   ("timeline", when)) if v}
         return "Web concierge answers: " + ", ".join(p for p in parts if p) + ".", extra
 
     async def concierge_post(request, lang):
@@ -280,44 +299,56 @@ def install(app: FastAPI, *, db, pipe, settings, limiter, client_ip) -> Pub:
             return pub.error(request, lang, "pub.err.toolarge", 413)
         lang = pub.lang(request, data)
         token = data.get("token", "")
+        answer = _clean(data.get("answer"), 300)
+        if token == "" and data.get("step") == "intent":           # first answer: only now does the server create a session
+            if qualify.is_stop(answer):
+                return declined_page(request, lang)
+            if starts.hit(client_ip(request)):
+                return pub.error(request, lang, "pub.err.rate", 429)
+            token = sessions.start(lang, client_ip(request))
+            pub.bump("concierge_start")
         state = sessions.load(token)
         if state is None:
             return restart_page(request, lang)
         if state.get("phase") == "contact":
             return contact_submit(request, lang, token, state, data)
-        if data.get("step") != state["step"]:                      # a replayed or out-of-order step: show where the chat really is
-            return qa_page(request, lang, token, state)
-        answer = data.get("answer", "")[:300]
-        if qualify.is_stop(answer):
+        if qualify.is_stop(answer):                                # STOP works from any step, even a stale tab
             sessions.delete(token)
             pub.bump("concierge_declined")
             return declined_page(request, lang)
+        if data.get("step") != state["step"]:                      # a replayed or out-of-order step: show where the chat really is
+            return qa_page(request, lang, token, state)
         new, reply, done = qualify.advance(state, answer)
         new["lang"], new["phase"] = lang, "qa"
         if done:
             if new["answers"].get("consent"):
                 new["phase"] = "contact"
+                new["consent_text"] = f"{state.get('shown', '')} → {answer}"      # exactly what was shown and what the visitor answered
                 sessions.save(token, new)
                 return contact_page(request, lang, token)
             sessions.delete(token)                                  # "no" (or no answer): nothing is kept
             pub.bump("concierge_declined")
             return declined_page(request, lang)
+        retry = reply.startswith(qualify.Q["en"]["retry"]) or reply.startswith(qualify.Q["ar"]["retry"])
+        new["shown"] = question(lang, new, retry)
         sessions.save(token, new)
-        return qa_page(request, lang, token, new, retry=reply.startswith(qualify.Q[new.get("lang", lang)]["retry"]) or reply.startswith(qualify.Q["ar" if lang == "en" else "en"]["retry"]))
+        return qa_page(request, lang, token, new, retry=retry)
 
     def contact_submit(request, lang, token, state, data):
         st = site.strings(lang)
-        if limiter.hit(client_ip(request)):
-            return pub.error(request, lang, "pub.err.rate", 429)
         if data.get("website"):                                      # honeypot
             sessions.delete(token)
+            if limiter.hit(client_ip(request)):
+                return pub.error(request, lang, "pub.err.rate", 429)
             return thanks(request, lang)
-        name, phone, email = data.get("name", "").strip()[:100], normalize_phone(data.get("phone")), normalize_email(data.get("email"))
+        name, phone, email = re.sub(r"\s+", " ", _clean(data.get("name"), 100)), normalize_phone(data.get("phone")), normalize_email(data.get("email"))
         if not (phone or email):
             return contact_page(request, lang, token, pub.msg(lang, "pub.err.contact"), 422, {"name": name, "phone": data.get("phone", "")[:30], "email": data.get("email", "")[:200]})
         text, extra = answers_text(state, lang)
+        if limiter.hit(client_ip(request)):
+            return pub.error(request, lang, "pub.err.rate", 429)
         pipe.ingest(Signal(platform="web", external_id=uuid.uuid4().hex, source_type="lead_form", text=text, author_name=name or None, phone=phone, email=email,
-                           consent_marketing=True, consent_text=f"{st['pub.c.q_consent']} → {'YES' if lang == 'en' else 'نعم'}",
+                           consent_marketing=True, consent_text=state.get("consent_text") or st["pub.c.q_consent"],
                            campaign="concierge", extra=extra))
         sessions.delete(token)
         pub.bump("concierge_done")

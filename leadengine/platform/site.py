@@ -126,6 +126,7 @@ def render_with_base(template: str, base: str, lang: str, ctx: dict) -> str:
               "canonical": f"{origin}{prefix}{path}?lang={lang}", "alt_en": f"{origin}{prefix}{path}?lang=en", "alt_ar": f"{origin}{prefix}{path}?lang=ar",
               "lang_href": f"{prefix}{path}?lang={other}"})
     c.setdefault("robots", "")
+    c.setdefault("asset_prefix", "")
     c.setdefault("agent_line", "")
     c.setdefault("home_href", f"{prefix}/p")
     c["content"] = _render(_expand(_template(template)), lang, c)

@@ -45,7 +45,7 @@ def test_lead_through_the_public_path_lands_only_in_that_workspace(tmp_path):
     anon = TestClient(app)
     assert anon.post(f"/t/{key_of(a)}/p/lead", data=lead_form()).status_code == 200
     assert len(a.get("/leads").json()) == 1 and b.get("/leads").json() == []
-    r = anon.get(f"/t/{key_of(a)}/p/concierge")
+    r = anon.post(f"/t/{key_of(a)}/p/concierge", data={"lang": "en", "token": "", "step": "intent", "answer": "buy"})      # creates A's session
     token = re.search(r'name="token" value="([^"]+)"', r.text).group(1)
     other = anon.post(f"/t/{key_of(b)}/p/concierge", data={"lang": "en", "token": token, "step": "intent", "answer": "buy"})
     assert "expired" in other.text                                                  # B's database has never seen A's session
@@ -72,7 +72,7 @@ def test_stats_endpoint_roles_and_counts(tmp_path):
     anon.get(f"/t/{key}/p/affordability")
     anon.post(f"/t/{key}/p/affordability", data=AFF)
     anon.post(f"/t/{key}/p/lead", data=lead_form())
-    anon.get(f"/t/{key}/p/concierge")
+    anon.post(f"/t/{key}/p/concierge", data={"lang": "en", "token": "", "step": "intent", "answer": "buy"})
     s = owner.get("/magnets/stats").json()
     assert s["tools"]["affordability"] == {"views": 1, "submits": 1, "leads": 1} and s["concierge"] == {"started": 1, "completed": 0, "declined": 0}
     assert s["tools"]["costs"] == {"views": 0, "submits": 0, "leads": 0}
