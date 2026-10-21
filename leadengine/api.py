@@ -22,6 +22,7 @@ from .db import DB
 from .distribution import canon_areas
 from .models import Signal, utcnow
 from .inventory import import_projects_csv, match as match_projects
+from .markets.cities import search as search_cities, stats as city_stats
 from .nba import next_actions, todays_tasks
 from .outreach import draft
 from .pipeline import Pipeline
@@ -458,6 +459,16 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
             c.execute("INSERT INTO activities(lead_id,ts,kind,channel,note) VALUES(?,?,?,?,?)",
                       (lead_id, utcnow().isoformat(), p.kind, p.channel, (p.note or "")[:1000]))
         return {"ok": True}
+
+    # ---------------------------------------------------------------- source-market catalogue
+    @app.get("/markets/cities")
+    def markets_cities(q: str | None = None, country: str | None = None, region: str | None = None, tier: int | None = Query(None, ge=1, le=3),
+                       lang: str | None = None, limit: int = Query(100, ge=1, le=500), _=Depends(auth)):
+        return [c.to_dict() for c in search_cities(q, country, region, tier, lang, limit)]
+
+    @app.get("/markets/summary")
+    def markets_summary(_=Depends(auth)):
+        return city_stats()
 
     @app.post("/inventory")
     async def inventory(request: Request, _=Depends(auth)):

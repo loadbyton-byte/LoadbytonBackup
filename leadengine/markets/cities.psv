@@ -1,0 +1,233 @@
+# name|country(ISO2)|region|IANA timezone|languages (ISO 639-1, ;-separated, marketing order)|tier (editorial 1-3)|aliases (;-separated)
+# tier is an editorial STARTING priority for Dubai-property marketing, not a statistic. Replace it with measured demand from your own analytics.
+Dubai|AE|UAE (domestic)|Asia/Dubai|ar;en|1|دبي;DXB
+Abu Dhabi|AE|UAE (domestic)|Asia/Dubai|ar;en|3|ابوظبي;أبو ظبي
+Sharjah|AE|UAE (domestic)|Asia/Dubai|ar;en|3|الشارقة
+Ajman|AE|UAE (domestic)|Asia/Dubai|ar;en|3|عجمان
+Ras Al Khaimah|AE|UAE (domestic)|Asia/Dubai|ar;en|3|RAK;رأس الخيمة
+Al Ain|AE|UAE (domestic)|Asia/Dubai|ar;en|3|
+Mumbai|IN|South Asia|Asia/Kolkata|en;hi;mr|1|Bombay
+Delhi|IN|South Asia|Asia/Kolkata|en;hi|1|New Delhi
+Bangalore|IN|South Asia|Asia/Kolkata|en;kn;hi|1|Bengaluru
+Chennai|IN|South Asia|Asia/Kolkata|en;ta|1|Madras
+Hyderabad|IN|South Asia|Asia/Kolkata|en;te;ur|1|Secunderabad
+Kochi|IN|South Asia|Asia/Kolkata|ml;en|1|Cochin;Ernakulam
+Kolkata|IN|South Asia|Asia/Kolkata|en;bn|2|Calcutta
+Pune|IN|South Asia|Asia/Kolkata|en;mr|2|Poona
+Ahmedabad|IN|South Asia|Asia/Kolkata|en;gu|2|
+Surat|IN|South Asia|Asia/Kolkata|gu;en;hi|2|
+Jaipur|IN|South Asia|Asia/Kolkata|hi;en|2|
+Thiruvananthapuram|IN|South Asia|Asia/Kolkata|ml;en|2|Trivandrum
+Kozhikode|IN|South Asia|Asia/Kolkata|ml;en|2|Calicut
+Coimbatore|IN|South Asia|Asia/Kolkata|ta;en|2|Kovai
+Visakhapatnam|IN|South Asia|Asia/Kolkata|te;en|2|Vizag
+Chandigarh|IN|South Asia|Asia/Kolkata|pa;hi;en|2|
+Lucknow|IN|South Asia|Asia/Kolkata|hi;en;ur|2|
+Indore|IN|South Asia|Asia/Kolkata|hi;en|2|
+Gurgaon|IN|South Asia|Asia/Kolkata|hi;en|2|Gurugram
+Noida|IN|South Asia|Asia/Kolkata|hi;en|2|
+Thrissur|IN|South Asia|Asia/Kolkata|ml;en|3|Trichur
+Kannur|IN|South Asia|Asia/Kolkata|ml;en|3|Cannanore
+Mangalore|IN|South Asia|Asia/Kolkata|kn;en|3|Mangaluru
+Mysore|IN|South Asia|Asia/Kolkata|kn;en|3|Mysuru
+Madurai|IN|South Asia|Asia/Kolkata|ta;en|3|
+Tiruchirappalli|IN|South Asia|Asia/Kolkata|ta;en|3|Trichy
+Vijayawada|IN|South Asia|Asia/Kolkata|te;en|3|
+Ludhiana|IN|South Asia|Asia/Kolkata|pa;en|3|
+Amritsar|IN|South Asia|Asia/Kolkata|pa;en|3|
+Jalandhar|IN|South Asia|Asia/Kolkata|pa;en|3|
+Kanpur|IN|South Asia|Asia/Kolkata|hi;en|3|
+Bhopal|IN|South Asia|Asia/Kolkata|hi;en|3|
+Nagpur|IN|South Asia|Asia/Kolkata|mr;hi;en|3|
+Vadodara|IN|South Asia|Asia/Kolkata|gu;en|3|Baroda
+Rajkot|IN|South Asia|Asia/Kolkata|gu;en|3|
+Bhubaneswar|IN|South Asia|Asia/Kolkata|or;en|3|
+Patna|IN|South Asia|Asia/Kolkata|hi;en|3|
+Goa|IN|South Asia|Asia/Kolkata|en;hi|3|Panaji
+Karachi|PK|South Asia|Asia/Karachi|ur;en|1|
+Lahore|PK|South Asia|Asia/Karachi|ur;pa;en|1|
+Islamabad|PK|South Asia|Asia/Karachi|ur;en|1|
+Rawalpindi|PK|South Asia|Asia/Karachi|ur;en|2|
+Faisalabad|PK|South Asia|Asia/Karachi|ur;pa|2|
+Peshawar|PK|South Asia|Asia/Karachi|ps;ur|2|
+Multan|PK|South Asia|Asia/Karachi|ur;pa|3|
+Sialkot|PK|South Asia|Asia/Karachi|ur;pa|3|
+Gujranwala|PK|South Asia|Asia/Karachi|ur;pa|3|
+Dhaka|BD|South Asia|Asia/Dhaka|bn;en|1|Dacca
+Chittagong|BD|South Asia|Asia/Dhaka|bn;en|2|Chattogram
+Sylhet|BD|South Asia|Asia/Dhaka|bn;en|3|
+Colombo|LK|South Asia|Asia/Colombo|si;ta;en|2|
+Kathmandu|NP|South Asia|Asia/Kathmandu|ne;en|2|
+Riyadh|SA|GCC|Asia/Riyadh|ar;en|1|الرياض
+Jeddah|SA|GCC|Asia/Riyadh|ar;en|1|جدة;Jiddah
+Dammam|SA|GCC|Asia/Riyadh|ar;en|2|الدمام
+Khobar|SA|GCC|Asia/Riyadh|ar;en|2|Al Khobar;الخبر
+Kuwait City|KW|GCC|Asia/Kuwait|ar;en|1|الكويت;Kuwait
+Doha|QA|GCC|Asia/Qatar|ar;en|1|الدوحة
+Manama|BH|GCC|Asia/Bahrain|ar;en|2|المنامة;Bahrain
+Muscat|OM|GCC|Asia/Muscat|ar;en|2|مسقط
+Amman|JO|Middle East & Caucasus|Asia/Amman|ar;en|2|
+Beirut|LB|Middle East & Caucasus|Asia/Beirut|ar;fr;en|2|بيروت
+Baghdad|IQ|Middle East & Caucasus|Asia/Baghdad|ar;en|3|بغداد
+Erbil|IQ|Middle East & Caucasus|Asia/Baghdad|ku;ar|3|Hewler;أربيل
+Tehran|IR|Middle East & Caucasus|Asia/Tehran|fa;en|2|طهران
+Tel Aviv|IL|Middle East & Caucasus|Asia/Jerusalem|he;en;ru|2|Tel Aviv-Yafo
+Istanbul|TR|Middle East & Caucasus|Europe/Istanbul|tr;en;ar|1|إسطنبول
+Ankara|TR|Middle East & Caucasus|Europe/Istanbul|tr;en|3|
+Izmir|TR|Middle East & Caucasus|Europe/Istanbul|tr;en|3|
+Cairo|EG|Middle East & Caucasus|Africa/Cairo|ar;en|1|القاهرة
+Alexandria|EG|Middle East & Caucasus|Africa/Cairo|ar;en|2|الإسكندرية
+Baku|AZ|Middle East & Caucasus|Asia/Baku|az;ru;en|2|
+Tbilisi|GE|Middle East & Caucasus|Asia/Tbilisi|ka;ru;en|2|
+Yerevan|AM|Middle East & Caucasus|Asia/Yerevan|hy;ru;en|3|
+Lagos|NG|Africa|Africa/Lagos|en|1|
+Abuja|NG|Africa|Africa/Lagos|en|2|
+Port Harcourt|NG|Africa|Africa/Lagos|en|3|
+Nairobi|KE|Africa|Africa/Nairobi|en;sw|1|
+Mombasa|KE|Africa|Africa/Nairobi|sw;en|3|
+Johannesburg|ZA|Africa|Africa/Johannesburg|en;af|1|Joburg
+Cape Town|ZA|Africa|Africa/Johannesburg|en;af|2|
+Durban|ZA|Africa|Africa/Johannesburg|en;zu|3|
+Pretoria|ZA|Africa|Africa/Johannesburg|en;af|3|Tshwane
+Accra|GH|Africa|Africa/Accra|en|2|
+Addis Ababa|ET|Africa|Africa/Addis_Ababa|am;en|2|
+Dar es Salaam|TZ|Africa|Africa/Dar_es_Salaam|sw;en|2|
+Kampala|UG|Africa|Africa/Kampala|en;sw|2|
+Kigali|RW|Africa|Africa/Kigali|rw;fr;en|3|
+Casablanca|MA|Africa|Africa/Casablanca|ar;fr|2|الدار البيضاء
+Rabat|MA|Africa|Africa/Casablanca|ar;fr|3|
+Tunis|TN|Africa|Africa/Tunis|ar;fr|3|
+Algiers|DZ|Africa|Africa/Algiers|ar;fr|3|
+Khartoum|SD|Africa|Africa/Khartoum|ar;en|3|
+Luanda|AO|Africa|Africa/Luanda|pt|3|
+Maputo|MZ|Africa|Africa/Maputo|pt|3|
+Harare|ZW|Africa|Africa/Harare|en;sn|3|
+Lusaka|ZM|Africa|Africa/Lusaka|en|3|
+Dakar|SN|Africa|Africa/Dakar|fr|3|
+Abidjan|CI|Africa|Africa/Abidjan|fr|3|
+Kinshasa|CD|Africa|Africa/Kinshasa|fr;ln|3|
+Port Louis|MU|Africa|Indian/Mauritius|en;fr|3|
+Douala|CM|Africa|Africa/Douala|fr;en|3|
+London|GB|Europe|Europe/London|en|1|
+Manchester|GB|Europe|Europe/London|en|2|
+Birmingham|GB|Europe|Europe/London|en|2|
+Leeds|GB|Europe|Europe/London|en|3|
+Glasgow|GB|Europe|Europe/London|en|3|
+Edinburgh|GB|Europe|Europe/London|en|3|
+Leicester|GB|Europe|Europe/London|en;gu|3|
+Dublin|IE|Europe|Europe/Dublin|en|2|
+Paris|FR|Europe|Europe/Paris|fr|1|
+Lyon|FR|Europe|Europe/Paris|fr|3|
+Marseille|FR|Europe|Europe/Paris|fr|3|
+Cannes|FR|Europe|Europe/Paris|fr;en|3|
+Brussels|BE|Europe|Europe/Brussels|fr;nl|2|
+Antwerp|BE|Europe|Europe/Brussels|nl;en|3|
+Amsterdam|NL|Europe|Europe/Amsterdam|nl;en|2|
+Rotterdam|NL|Europe|Europe/Amsterdam|nl;en|3|
+Frankfurt|DE|Europe|Europe/Berlin|de;en|1|
+Munich|DE|Europe|Europe/Berlin|de;en|2|München
+Berlin|DE|Europe|Europe/Berlin|de;en|2|
+Hamburg|DE|Europe|Europe/Berlin|de|3|
+Düsseldorf|DE|Europe|Europe/Berlin|de|3|Dusseldorf
+Cologne|DE|Europe|Europe/Berlin|de|3|Köln
+Zurich|CH|Europe|Europe/Zurich|de;en|1|Zürich
+Geneva|CH|Europe|Europe/Zurich|fr;en|2|Genève
+Vienna|AT|Europe|Europe/Vienna|de|3|Wien
+Milan|IT|Europe|Europe/Rome|it;en|2|Milano
+Rome|IT|Europe|Europe/Rome|it;en|3|Roma
+Madrid|ES|Europe|Europe/Madrid|es;en|2|
+Barcelona|ES|Europe|Europe/Madrid|es;ca;en|3|
+Lisbon|PT|Europe|Europe/Lisbon|pt;en|2|Lisboa
+Athens|GR|Europe|Europe/Athens|el;en|3|
+Prague|CZ|Europe|Europe/Prague|cs;en|3|Praha
+Warsaw|PL|Europe|Europe/Warsaw|pl;en|3|Warszawa
+Budapest|HU|Europe|Europe/Budapest|hu;en|3|
+Bucharest|RO|Europe|Europe/Bucharest|ro;en|3|
+Sofia|BG|Europe|Europe/Sofia|bg;en|3|
+Belgrade|RS|Europe|Europe/Belgrade|sr;en|3|
+Zagreb|HR|Europe|Europe/Zagreb|hr;en|3|
+Stockholm|SE|Europe|Europe/Stockholm|sv;en|3|
+Oslo|NO|Europe|Europe/Oslo|no;en|3|
+Copenhagen|DK|Europe|Europe/Copenhagen|da;en|3|
+Helsinki|FI|Europe|Europe/Helsinki|fi;en|3|
+Luxembourg|LU|Europe|Europe/Luxembourg|fr;de;en|3|
+Monaco|MC|Europe|Europe/Monaco|fr;en|3|
+Limassol|CY|Europe|Asia/Nicosia|el;en;ru|2|
+Nicosia|CY|Europe|Asia/Nicosia|el;en|3|
+Valletta|MT|Europe|Europe/Malta|en;mt|3|
+Kyiv|UA|Europe|Europe/Kyiv|uk;ru;en|2|Kiev
+Minsk|BY|Europe|Europe/Minsk|be;ru|3|
+Riga|LV|Europe|Europe/Riga|lv;ru;en|3|
+Tallinn|EE|Europe|Europe/Tallinn|et;en;ru|3|
+Vilnius|LT|Europe|Europe/Vilnius|lt;en|3|
+Moscow|RU|Russia & Central Asia|Europe/Moscow|ru;en|1|Москва
+Saint Petersburg|RU|Russia & Central Asia|Europe/Moscow|ru|1|St Petersburg;Санкт-Петербург
+Kazan|RU|Russia & Central Asia|Europe/Moscow|ru;tt|3|Казань
+Novosibirsk|RU|Russia & Central Asia|Asia/Novosibirsk|ru|3|
+Yekaterinburg|RU|Russia & Central Asia|Asia/Yekaterinburg|ru|3|
+Sochi|RU|Russia & Central Asia|Europe/Moscow|ru|3|
+Almaty|KZ|Russia & Central Asia|Asia/Almaty|kk;ru|2|
+Astana|KZ|Russia & Central Asia|Asia/Almaty|kk;ru|2|Nur-Sultan
+Tashkent|UZ|Russia & Central Asia|Asia/Tashkent|uz;ru|2|
+Bishkek|KG|Russia & Central Asia|Asia/Bishkek|ky;ru|3|
+Dushanbe|TJ|Russia & Central Asia|Asia/Dushanbe|tg;ru|3|
+Beijing|CN|East Asia|Asia/Shanghai|zh|2|北京
+Shanghai|CN|East Asia|Asia/Shanghai|zh;en|1|上海
+Shenzhen|CN|East Asia|Asia/Shanghai|zh|2|深圳
+Guangzhou|CN|East Asia|Asia/Shanghai|zh|2|Canton;广州
+Chengdu|CN|East Asia|Asia/Shanghai|zh|3|
+Hangzhou|CN|East Asia|Asia/Shanghai|zh|3|
+Hong Kong|HK|East Asia|Asia/Hong_Kong|zh;en|1|香港
+Macau|MO|East Asia|Asia/Macau|zh;pt|3|Macao
+Taipei|TW|East Asia|Asia/Taipei|zh|3|
+Tokyo|JP|East Asia|Asia/Tokyo|ja;en|3|
+Osaka|JP|East Asia|Asia/Tokyo|ja|3|
+Seoul|KR|East Asia|Asia/Seoul|ko;en|3|
+Busan|KR|East Asia|Asia/Seoul|ko|3|
+Ulaanbaatar|MN|East Asia|Asia/Ulaanbaatar|mn|3|Ulan Bator
+Singapore|SG|Southeast Asia|Asia/Singapore|en;zh;ms|1|
+Kuala Lumpur|MY|Southeast Asia|Asia/Kuala_Lumpur|ms;en;zh|2|
+Penang|MY|Southeast Asia|Asia/Kuala_Lumpur|en;zh|3|George Town
+Jakarta|ID|Southeast Asia|Asia/Jakarta|id;en|2|
+Surabaya|ID|Southeast Asia|Asia/Jakarta|id|3|
+Bangkok|TH|Southeast Asia|Asia/Bangkok|th;en|2|
+Phuket|TH|Southeast Asia|Asia/Bangkok|th;en|3|
+Manila|PH|Southeast Asia|Asia/Manila|en;tl|2|
+Cebu|PH|Southeast Asia|Asia/Manila|en;tl|3|Cebu City
+Ho Chi Minh City|VN|Southeast Asia|Asia/Ho_Chi_Minh|vi;en|3|Saigon;HCMC
+Hanoi|VN|Southeast Asia|Asia/Ho_Chi_Minh|vi|3|
+Phnom Penh|KH|Southeast Asia|Asia/Phnom_Penh|km;en|3|
+Yangon|MM|Southeast Asia|Asia/Yangon|my;en|3|Rangoon
+Sydney|AU|Oceania|Australia/Sydney|en|2|
+Melbourne|AU|Oceania|Australia/Melbourne|en|2|
+Brisbane|AU|Oceania|Australia/Brisbane|en|3|
+Perth|AU|Oceania|Australia/Perth|en|3|
+Adelaide|AU|Oceania|Australia/Adelaide|en|3|
+Auckland|NZ|Oceania|Pacific/Auckland|en|3|
+New York|US|North America|America/New_York|en;es|1|NYC;New York City
+Los Angeles|US|North America|America/Los_Angeles|en;es|2|
+San Francisco|US|North America|America/Los_Angeles|en|3|
+Miami|US|North America|America/New_York|en;es|2|
+Houston|US|North America|America/Chicago|en;es|3|
+Dallas|US|North America|America/Chicago|en;es|3|
+Chicago|US|North America|America/Chicago|en|3|
+Boston|US|North America|America/New_York|en|3|
+Washington DC|US|North America|America/New_York|en|3|Washington
+Seattle|US|North America|America/Los_Angeles|en|3|
+Atlanta|US|North America|America/New_York|en|3|
+Toronto|CA|North America|America/Toronto|en;fr|1|
+Vancouver|CA|North America|America/Vancouver|en|2|
+Montreal|CA|North America|America/Toronto|fr;en|3|Montréal
+Calgary|CA|North America|America/Edmonton|en|3|
+Mexico City|MX|North America|America/Mexico_City|es|3|CDMX
+São Paulo|BR|Latin America & Caribbean|America/Sao_Paulo|pt|3|Sao Paulo
+Rio de Janeiro|BR|Latin America & Caribbean|America/Sao_Paulo|pt|3|Rio
+Buenos Aires|AR|Latin America & Caribbean|America/Argentina/Buenos_Aires|es|3|
+Bogotá|CO|Latin America & Caribbean|America/Bogota|es|3|Bogota
+Lima|PE|Latin America & Caribbean|America/Lima|es|3|
+Santiago|CL|Latin America & Caribbean|America/Santiago|es|3|
+Panama City|PA|Latin America & Caribbean|America/Panama|es;en|3|
+Quito|EC|Latin America & Caribbean|America/Guayaquil|es|3|
+Montevideo|UY|Latin America & Caribbean|America/Montevideo|es|3|
+Port of Spain|TT|Latin America & Caribbean|America/Port_of_Spain|en|3|
+Kingston|JM|Latin America & Caribbean|America/Jamaica|en|3|

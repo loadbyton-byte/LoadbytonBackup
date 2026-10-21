@@ -128,6 +128,8 @@ onboarding → 9 docs, Docker (volumes for control DB and tenants), maintain CLI
 
 ## 11. Roadmap after this sub-project
 
+*Update 2026-10-21:* the city catalogue for sub-project 3 already exists as a standalone data asset (`leadengine/markets/cities.psv`, 231 cities, see `docs/markets/CITY_CATALOGUE.md`); the market module will build on it.
+
 (2) lead tools: ad-platform offline conversions, referral/co-broker portal, event QR check-in, web concierge, lead-magnet calculators,
 off-plan alerts, consent-based nurture, CRM sync. (3) global demand intelligence for Dubai property by source city (London, Mumbai,
 Delhi, Karachi, Riyadh, Moscow, Lagos, Singapore, Hong Kong, Toronto, New York…): per-city language/market config, aggregated demand from
