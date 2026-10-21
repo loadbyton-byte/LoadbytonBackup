@@ -18,7 +18,7 @@ export async function render(el) {
       $('#roi-rows', el).innerHTML = rows.map(r => `<tr><td><b>${esc(r.source)}</b></td><td>${Number(r.leads)}</td><td>${Number(r.qualified)}</td><td>${Number(r.won)}</td>
         <td>${r.within_sla_pct == null ? '—' : Number(r.within_sla_pct) + '%'}</td><td>${esc(num(r.median_first_response_min))}</td><td>${Number(r.spend_aed).toLocaleString()}</td>
         <td>${esc(num(r.cost_per_qualified))}</td><td>${esc(num(r.cost_per_won))}</td></tr>`).join('');
-    } catch (e) { $('#roi-rows', el).innerHTML = `<tr><td colspan="9">${err(e)}</td></tr>`; }
+    } catch (e) { if (!el.isConnected) return; $('#roi-rows', el).innerHTML = `<tr><td colspan="9">${err(e)}</td></tr>`; }
   };
   $('#spend-form', el).addEventListener('submit', async e => {
     e.preventDefault(); const f = new FormData(e.target);

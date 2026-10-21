@@ -31,6 +31,7 @@ function build() {
       <header class="topbar">
         <button id="menu-btn" type="button" aria-label="${esc(t('menu'))}" aria-controls="side">☰</button>
         <span class="ws" id="ws">${esc(me.workspace.name)}</span>
+        ${(me.workspaces || []).length > 1 ? `<select id="ws-switch" aria-label="${esc(t('ws_switch'))}">${me.workspaces.map(w => `<option value="${Number(w.id)}"${w.id === me.workspace.id ? ' selected' : ''}>${esc(w.name)}</option>`).join('')}</select>` : ''}
         <span class="role">${esc(t('role_' + me.role))}</span>
         <button id="open-palette" type="button" class="ghost small" aria-label="${esc(t('search'))}">${esc(t('search').replace(/ \(.*/, ''))} <kbd>Ctrl K</kbd></button>
         <button id="theme-btn" type="button" class="ghost small" aria-label="${esc(t('theme'))}">◐</button>
@@ -42,6 +43,10 @@ function build() {
   $('#theme-btn').onclick = () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark');
   $('#lang-btn').onclick = toggleLang;
   $('#open-palette').onclick = openPalette;
+  const sw = $('#ws-switch');
+  if (sw) sw.onchange = async () => { try { await post('/auth/workspace', { tenant_id: Number(sw.value) }); location.hash = ''; location.reload(); } catch (e) { alert(e.message); } };
+  $('#dlg').setAttribute('aria-label', t('h_lead'));
+  $('#palette').setAttribute('aria-label', t('search'));
   $('#signout').onclick = e => { e.preventDefault(); signOut(); };
 }
 

@@ -18,6 +18,7 @@ export async function render(el) {
     if ($('#label', el).value) q.set('label', $('#label', el).value);
     try {
       const [leads, stats, radar] = await Promise.all([api('/leads?' + q), mgr ? api('/stats') : null, mgr ? api('/radar') : null]);
+      if (!el.isConnected) return;
       if (stats) {
         const c = stats.counters, tr = stats.tiers;
         $('#tiles', el).innerHTML = [['HOT', tr.HOT || 0], ['WARM', tr.WARM || 0], ['NURTURE', tr.NURTURE || 0], [t('noise'), (c.discarded_noise || 0) + (c.discarded_agent_spam || 0)]]
@@ -37,7 +38,7 @@ export async function render(el) {
           <br><bdi class="mute">${Number(r.signals)} · ${Number(r.buy_share_pct)}% buy</bdi></div></div>`).join('') || '<span class="mute">—</span>';
         applyData(el);
       }
-    } catch (e) { $('#rows', el).innerHTML = `<tr><td colspan="5">${err(e)}</td></tr>`; }
+    } catch (e) { if (!el.isConnected) return; $('#rows', el).innerHTML = `<tr><td colspan="5">${err(e)}</td></tr>`; }
   };
   $('#rows', el).addEventListener('click', e => { const tr = e.target.closest('tr.row'); if (tr) openLead(Number(tr.dataset.id), load); });
   $('#tier', el).addEventListener('change', load);
@@ -47,10 +48,12 @@ export async function render(el) {
 
 /* ---------------------------------------------------------------- lead dialog (shared by Overview, Tasks and Agents) */
 function loadNba(id) {
+  const live = () => Number($('#dlg').dataset.id) === id;           // a slower answer for a previously opened lead is dropped
   return api(`/leads/${id}/next-actions`).then(a => {
+    if (!live()) return;
     $('#nba').innerHTML = a.length ? a.map(k => `<div><b>${esc(t('a_' + k.action))}</b> ${k.channel ? `<span class="chip ${k.allowed ? 'ok' : 'no'}" title="${esc(k.compliance_reason)}">${esc(k.channel)}</span>` : ''}
       <span class="mute">${esc(k.reason)}</span></div>`).join('') : t('no_actions');
-  }).catch(e => { $('#nba').innerHTML = err(e); });
+  }).catch(e => { if (live()) $('#nba').innerHTML = err(e); });
 }
 
 export async function openLead(id, onChange = () => {}) {
@@ -85,13 +88,15 @@ export async function openLead(id, onChange = () => {}) {
   dlg.dataset.id = l.id;
   dlg._onChange = onChange;
   applyData(dlg);
+  if (dlg.open) dlg.close();
   dlg.showModal();
   $('#close').onclick = () => dlg.close();
   loadNba(id);
   api(`/leads/${id}/matches`).then(m => {
+    if (Number($('#dlg').dataset.id) !== id) return;
     $('#matches').innerHTML = m.length ? m.map(x => `<div><b>${esc(x.project)}</b> <span class="chip">${Number(x.score)}</span>${x.golden_visa_fit ? '<span class="chip ok">golden visa</span>' : ''}
       <span class="mute">${esc(x.reasons.join(' · '))}</span></div>`).join('') : t('no_matches');
-  }).catch(e => { $('#matches').innerHTML = err(e); });
+  }).catch(e => { if (Number($('#dlg').dataset.id) === id) $('#matches').innerHTML = err(e); });
 }
 
 const dlgEl = document.getElementById('dlg');

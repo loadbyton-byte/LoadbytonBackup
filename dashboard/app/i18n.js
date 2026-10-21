@@ -1,6 +1,6 @@
 export const T = {
   en: {
-    boot: 'Loading…', app_title: 'DigitalBurj Leads', menu: 'Menu', search: 'Search pages and actions (Ctrl+K)', search_ph: 'Type a page or action…', no_results: 'Nothing matches.',
+    ws_switch: 'Switch workspace', boot: 'Loading…', app_title: 'DigitalBurj Leads', menu: 'Menu', search: 'Search pages and actions (Ctrl+K)', search_ph: 'Type a page or action…', no_results: 'Nothing matches.',
     nav_overview: 'Overview', nav_leads: 'Leads', nav_tasks: "Today's tasks", nav_agents: 'Agents & queue', nav_inventory: 'Inventory', nav_roi: 'ROI by source', nav_settings: 'Settings',
     act_theme: 'Toggle light / dark theme', act_lang: 'Switch language', act_signout: 'Sign out', signout: 'Sign out', go: 'Go to', action: 'Action',
     role_owner: 'Owner', role_manager: 'Manager', role_agent: 'Agent', theme: 'Theme', loading: 'Loading…', error: 'Something went wrong',
@@ -35,7 +35,7 @@ export const T = {
     st_role_manager: 'Manager', st_role_agent: 'Agent', st_none: '— none —', st_invited: 'Invitation sent.',
   },
   ar: {
-    boot: 'جارٍ التحميل…', app_title: 'ديجيتال برج ليدز', menu: 'القائمة', search: 'ابحث في الصفحات والإجراءات (Ctrl+K)', search_ph: 'اكتب اسم صفحة أو إجراء…', no_results: 'لا نتائج.',
+    ws_switch: 'تبديل مساحة العمل', boot: 'جارٍ التحميل…', app_title: 'ديجيتال برج ليدز', menu: 'القائمة', search: 'ابحث في الصفحات والإجراءات (Ctrl+K)', search_ph: 'اكتب اسم صفحة أو إجراء…', no_results: 'لا نتائج.',
     nav_overview: 'نظرة عامة', nav_leads: 'العملاء المحتملون', nav_tasks: 'مهام اليوم', nav_agents: 'الوكلاء والطابور', nav_inventory: 'المخزون', nav_roi: 'العائد حسب المصدر', nav_settings: 'الإعدادات',
     act_theme: 'تبديل المظهر الفاتح / الداكن', act_lang: 'تبديل اللغة', act_signout: 'تسجيل الخروج', signout: 'تسجيل الخروج', go: 'انتقل إلى', action: 'إجراء',
     role_owner: 'مالك', role_manager: 'مدير', role_agent: 'وكيل', theme: 'المظهر', loading: 'جارٍ التحميل…', error: 'حدث خطأ',
@@ -58,7 +58,7 @@ export const T = {
     duration: 'دقائق', location: 'الموقع', drafts: 'مسودات التواصل', needs_approval: '(تتطلب موافقة بشرية)', close: 'إغلاق', allowed: 'مسموح', blocked: 'محظور', status: 'الحالة',
     status_log: 'الحالة والنشاط', k_call: 'تسجيل مكالمة', k_message: 'تسجيل رسالة', k_follow_up: 'تسجيل متابعة', k_matches_sent: 'تم إرسال المشاريع', k_note: 'إضافة ملاحظة',
     escalated: 'أعيد تعيينها', flagged: 'تنبيه للمدير', no_matches: 'لا مشاريع مناسبة.', no_actions: 'لا إجراءات مستحقة.', saved: 'تم الحفظ', imported: 'تم استيراد', skipped: 'تم تخطي',
-    st_title: 'الإعدادات', st_profile: 'ملف الوكالة', st_agency: 'اسم الوكالة', st_agent: 'اسم الوكيل (في المسودات)', st_brn: 'رقم BRN من ريرا', st_trak: 'تصريح تراخيص', st_save: 'حفظ التغييرات',
+    st_title: 'الإعدادات', st_profile: 'ملف الوكالة', st_agency: 'اسم الوكالة', st_agent: 'اسم الوكيل (في المسودات)', st_brn: 'رقم BRN من ريرا', st_trak: 'تصريح تراخيصي', st_save: 'حفظ التغييرات',
     st_embed: 'نموذج العملاء في موقعك', st_embed_note: 'الصق هذا حيث يجب أن يظهر النموذج، واذكر نطاقات موقعك أدناه ليسمح المتصفح بالإرسال.', st_origins: 'نطاقات الموقع المسموحة (واحد في كل سطر)',
     st_integrations: 'التكاملات', st_integrations_note: 'الأسرار للكتابة فقط: اترك الحقل فارغاً للإبقاء على القيمة الحالية.', st_wa_phone: 'معرّف هاتف واتساب', st_wa_token: 'رمز واتساب',
     st_meta_verify: 'رمز تحقق ميتا', st_meta_secret: 'سر تطبيق ميتا', st_meta_page: 'رمز صفحة ميتا', st_form_secret: 'سر ويب هوك النماذج', st_is_set: 'مضبوط',

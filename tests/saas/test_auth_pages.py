@@ -39,7 +39,7 @@ def test_start_form_creates_account_and_redirects_to_verify_notice(env):
     c, mailer, _ = env
     signup(c, mailer)
     page = c.get("/start?sent=1")
-    assert page.status_code == 200 and "Check" in page.text or "confirm" in page.text.lower()
+    assert page.status_code == 200 and ("confirm" in page.text.lower() or "Check" in page.text)
     link = link_token(mailer, "verify")
     v = c.get(f"/verify?token={link}")
     assert v.status_code == 200 and "<form" in v.text                      # GET never consumes the token
@@ -85,7 +85,7 @@ def test_error_messages_are_uniform_and_translated(env):
         unknown = post(c, "/login", {"email": "ghost@a.ae", "password": "wrong-password-1"}, form_path=f"/login?lang={lang}", headers={"Accept-Language": lang})
         assert bad_pw.status_code == unknown.status_code == 401 and needle in bad_pw.text and needle in unknown.text
         strip = lambda t: re.sub(r'value="[^"]*"', "", t)
-        assert strip(bad_pw.text) == strip(unknown.text) or needle in unknown.text
+        assert strip(bad_pw.text) == strip(unknown.text)
     weak = post(c, "/start", {"email": "n@a.ae", "password": "short", "name": "N", "agency_name": "N"})
     assert weak.status_code == 400 and "12" in weak.text and 'value="n@a.ae"' in weak.text
     assert 'value="short"' not in weak.text
@@ -100,7 +100,7 @@ def test_open_redirect_blocked(env):
     r = post(c, "/login", {"email": "owner@a.ae", "password": PW, "next": "/app#overview"})
     assert r.headers["location"] == "/app#overview"
     g = c.get("/login?next=https://evil.example")
-    assert "evil.example" not in g.text
+    assert "https://evil.example" not in g.text and "//evil.example" not in g.text.replace("%2F%2Fevil.example", "")
 
 
 def test_reset_flow_and_bad_token_generic(env):

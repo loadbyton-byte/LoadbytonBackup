@@ -38,7 +38,7 @@ Set `CONTROL_DB` and the app becomes a multi-agency service (leave it empty for 
 
 - **Marketing site** (EN/AR, RTL): `/`, `/features`, `/how-it-works`, `/security`, `/compliance`, `/pricing`, `/faq`, `/contact`, `/privacy`, `/terms`. Copy lives in `site/i18n/{en,ar}.json`, price text in `site/pricing.json` (default: "Early access — contact us"), contact address in `CONTACT_EMAIL`. Privacy and Terms are **templates for review by UAE counsel**.
 - **Accounts**: `/start` (create a workspace), `/login`, `/forgot`, `/reset`, `/verify`, `/invite` work without JavaScript. Passwords use scrypt; sessions are hashed server-side with `HttpOnly`/`SameSite` cookies (`Secure` unless `DEV_INSECURE_COOKIES=1`); CSRF tokens on every cookie-authenticated write; progressive lockout; optional TOTP two-factor with recovery codes; e-mail links work once. JSON equivalents live under `/auth/*`.
-- **Workspaces**: every agency gets its own SQLite file served by its own app instance, so one agency's request cannot read another's rows. Roles: `owner`, `manager`, `agent` (agents see only the leads assigned to them). Machine access: per-workspace API key (`X-API-Key`, manager rights, shown once). Public routes per workspace: `/t/<public key>/{capture,widget.js,optout,webhooks/...}`.
+- **Workspaces**: a person can belong to several workspaces and switches between them in the top bar. Every agency gets its own SQLite file served by its own app instance, so one agency's request cannot read another's rows. Roles: `owner`, `manager`, `agent` (agents see only the leads assigned to them). Machine access: per-workspace API key (`X-API-Key`, manager rights, shown once). Public routes per workspace: `/t/<public key>/{capture,widget.js,optout,webhooks/...}`.
 - **Dashboard** at `/app`: sidebar shell, Overview KPIs and onboarding checklist, command palette (`Ctrl+K`), light/dark and EN/AR toggles, and Settings (agency profile, website embed + allowed origins, integration secrets, API key, two-factor, team invitations).
 
 ```bash
@@ -49,7 +49,7 @@ OWNER_PASSWORD='a long passphrase' python -m leadengine.cli create-owner you@age
 python -m leadengine.cli maintain                                # cron: SLA escalation + retention purge for every workspace; exit 1 if any workspace failed
 ```
 
-`CONTROL_DB` without `ENCRYPTION_KEY` refuses to start. Workspaces do **not** inherit the operator's connector credentials or licence identity: each agency sets its own in Settings. Use `MAIL_BACKEND=smtp` (`SMTP_*`) for real e-mail, put the app behind HTTPS and set `TRUSTED_PROXIES` so per-IP limits see real addresses. Back up the whole `DATA_DIR` and keep `ENCRYPTION_KEY` safe.
+`CONTROL_DB` without `ENCRYPTION_KEY` refuses to start. Workspaces do **not** inherit the operator's connector credentials or licence identity: each agency sets its own WhatsApp phone ID and token, Meta and form-webhook secrets and website origins in Settings (Reddit/Apify connectors, the DNC file and WhatsApp sending are single-tenant features for now). Use `MAIL_BACKEND=smtp` (`SMTP_*`) for real e-mail, put the app behind HTTPS and set `TRUSTED_PROXIES` so per-IP limits see real addresses. Back up the whole `DATA_DIR` and keep `ENCRYPTION_KEY` safe.
 
 ## Sources: what's supported and on what basis
 

@@ -148,6 +148,8 @@ class AccountService:
         problem = check_password_policy(password)
         if problem:
             raise AccountError("weak_password", problem)
+        if any(ord(c) < 32 or ord(c) == 127 for c in name + agency_name):
+            raise AccountError("invalid_input", "Names cannot contain control characters.")
         if not (1 <= len(name) <= 120 and 1 <= len(agency_name) <= 120):
             raise AccountError("invalid_input", "Name and agency name are required (max 120 characters).")
         self._record(f"reg:{ip}")
@@ -211,8 +213,22 @@ class AccountService:
                 c.execute("UPDATE users SET locked_until=? WHERE id=?", (self.now() + lock, user["id"]))
         self.control.audit("login_failed", user_id=user["id"], ip=ip, reason="password", failures=n)
 
-    def _new_session(self, user_id: int, ip: str = "") -> str:
-        m = self.control.one("SELECT tenant_id FROM memberships WHERE user_id=? ORDER BY tenant_id LIMIT 1", (user_id,))
+    def switch_workspace(self, user_id: int, tenant_id: int, old_raw: str, ip: str = "") -> str:
+        """New session for another workspace the user belongs to; the old session dies with it."""
+        if not self._role_of(user_id, tenant_id) or not self.control.one("SELECT 1 FROM tenants WHERE id=? AND status='active'", (tenant_id,)):
+            raise AccountError("forbidden", "You are not a member of that workspace.")
+        raw = self._new_session(user_id, ip, tenant_id)
+        self.logout(old_raw)
+        return raw
+
+    def workspaces_of(self, user_id: int) -> list[dict]:
+        return [dict(r) for r in self.control.q("SELECT t.id, t.name FROM memberships m JOIN tenants t ON t.id=m.tenant_id WHERE m.user_id=? AND t.status='active' ORDER BY t.id", (user_id,))]
+
+    def _new_session(self, user_id: int, ip: str = "", tenant_id: int | None = None) -> str:
+        if tenant_id is not None:
+            m = self.control.one("SELECT tenant_id FROM memberships WHERE user_id=? AND tenant_id=?", (user_id, tenant_id))
+        else:
+            m = self.control.one("SELECT tenant_id FROM memberships WHERE user_id=? ORDER BY tenant_id LIMIT 1", (user_id,))
         if not m:
             raise AccountError("no_workspace", "This account has no workspace.")
         raw, h = new_token()
@@ -400,10 +416,16 @@ class AccountService:
             c.execute("INSERT INTO invites(token_hash,tenant_id,email,role,agent_id,expires_at) VALUES(?,?,?,?,?,?)",
                       (h, tenant_id, email, role, agent_id, self.now() + INVITE_TTL_S))
         t = self.control.one("SELECT name FROM tenants WHERE id=?", (tenant_id,))
-        self.mailer.send(email, f"You are invited to {t['name']} on DigitalBurj Leads",
-                         f"You have been invited to join {t['name']} as {role}.\n\nAccept: {self._link('/invite', raw)}\n\nThe link expires in 7 days.")
+        try:
+            self._invite_mail(email, t, role, raw)
+        except ValueError as e:                                  # e.g. header-injection guard: never a 500
+            raise AccountError("invalid_input", str(e)) from e
         self.control.audit("invite_sent", user_id=inviter_id, tenant_id=tenant_id, invited_role=role)
         return raw
+
+    def _invite_mail(self, email, t, role, raw):
+        self.mailer.send(email, f"You are invited to {t['name']} on DigitalBurj Leads",
+                         f"You have been invited to join {t['name']} as {role}.\n\nAccept: {self._link('/invite', raw)}\n\nThe link expires in 7 days.")
 
     def accept_invite(self, raw_token: str, password: str, name: str) -> int:
         bad = AccountError("invalid_invite", "This invitation is not valid or has expired.")

@@ -13,7 +13,7 @@ export async function render(el) {
       $('#inv-empty', el).hidden = rows.length > 0;
       $('#inv-rows', el).innerHTML = rows.map(p => `<tr><td><b>${esc(p.name)}</b><br><span class="mute">${esc(p.developer || '')}</span></td><td>${esc(p.area || '—')}</td>
         <td>${Number(p.min_price).toLocaleString()} – ${Number(p.max_price).toLocaleString()}</td><td>${esc(p.bedrooms.map(b => b === 0 ? 'Studio' : b).join(', '))}</td><td>${esc(num(p.handover_year))}</td></tr>`).join('');
-    } catch (e) { $('#inv-rows', el).innerHTML = `<tr><td colspan="5">${err(e)}</td></tr>`; }
+    } catch (e) { if (!el.isConnected) return; $('#inv-rows', el).innerHTML = `<tr><td colspan="5">${err(e)}</td></tr>`; }
   };
   $('#inv-import', el).onclick = async () => {
     try {

@@ -23,7 +23,7 @@ export async function render(el) {
       $('#overdue-rows', el).innerHTML = overdue.map(l => `<tr class="row" data-id="${Number(l.id)}"><td>${pill(l.tier)} ${Number(l.score)}</td><td><b>${esc(l.display_name || 'Lead #' + l.id)}</b></td>
         <td>${esc(l.primary_area || '—')}</td><td class="mute">${esc(t('reply_by'))} ${esc(when(l.sla_due_at))}</td><td>${l.assigned_agent_id ? '#' + Number(l.assigned_agent_id) : '—'}</td></tr>`).join('')
         || `<tr><td class="mute">${esc(t('none'))}</td></tr>`;
-    } catch (e) { $('#agent-rows', el).innerHTML = `<tr><td colspan="6">${err(e)}</td></tr>`; }
+    } catch (e) { if (!el.isConnected) return; $('#agent-rows', el).innerHTML = `<tr><td colspan="6">${err(e)}</td></tr>`; }
   };
   $('#agent-rows', el).addEventListener('click', async e => {
     const b = e.target.closest('[data-agent]'); if (!b) return;

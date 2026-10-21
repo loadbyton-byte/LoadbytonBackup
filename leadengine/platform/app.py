@@ -18,7 +18,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qs, parse_qsl, quote, urlencode
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
@@ -206,7 +206,7 @@ class Dispatcher:
             with self.tenants.lease(tid) as tapp:
                 fwd = self._forward_scope(scope, path, {b"cookie", b"x-api-key", b"x-csrf-token"}, "GET" if head else None)
                 if role == "agent":
-                    scoped = await self._scope_agent(fwd, receive, tid, info.agent_id, method, path)
+                    scoped = await self._scope_agent(fwd, receive, tapp.state.db, info.agent_id, method, path)
                     if isinstance(scoped, JSONResponse):
                         return await self._reply(scoped, scope, receive, send)
                     fwd, receive = scoped
@@ -214,7 +214,7 @@ class Dispatcher:
         except KeyError:
             await self._reply(_not_found(), scope, receive, send)
 
-    async def _scope_agent(self, fwd: dict, receive, tid: int, agent_id: int | None, method: str, path: str):
+    async def _scope_agent(self, fwd: dict, receive, db, agent_id: int | None, method: str, path: str):
         """Row-level scoping for the agent role: own leads only, own calendar, own tasks. Client-supplied agent filters never survive."""
         me = agent_id if agent_id is not None else -1                       # -1 matches no agent: an unlinked account sees nothing
         qs = [(k, v) for k, v in parse_qsl(fwd.get("query_string", b"").decode("latin-1"), keep_blank_values=True)
@@ -227,7 +227,7 @@ class Dispatcher:
         m = re.match(r"^/leads/(\d+)(/.*)?$", path)
         if not m:
             return fwd, receive
-        row = self.tenants.db_for(tid).one("SELECT assigned_agent_id FROM leads WHERE id=?", (int(m.group(1)),))
+        row = db.one("SELECT assigned_agent_id FROM leads WHERE id=?", (int(m.group(1)),))
         if not row or agent_id is None or row["assigned_agent_id"] != agent_id:
             return _json(403, {"error": "forbidden", "message": "That lead is not assigned to you."})
         sub = m.group(2) or ""
@@ -278,7 +278,14 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
     app = FastAPI(title="DigitalBurj Leads", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings, app.state.control, app.state.tenants, app.state.accounts = s, control, tenants, accounts
 
-    app.mount("/static", StaticFiles(directory=DASH.parent), name="static")
+    class AssetFiles(StaticFiles):
+        """Brand assets, fonts and CSS only: the HTML dashboards under dashboard/ must not be reachable here (they would skip the strict CSP)."""
+        async def get_response(self, path, scope):
+            if path.lower().endswith((".html", ".htm")):
+                raise HTTPException(404)
+            return await super().get_response(path, scope)
+
+    app.mount("/static", AssetFiles(directory=DASH.parent), name="static")
 
     app.mount("/site-static", StaticFiles(directory=site.SITE_DIR / "static"), name="site-static")
     LANG_COOKIE = "dbl_lang"
@@ -401,7 +408,7 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
         raise ApiError(401, "invalid_credentials", "Invalid email or password.")
 
     # ------------------------------------------------------------------ HTML auth pages (work without JavaScript)
-    FORM_COOKIE = "dbl_form"
+    FORM_COOKIE = "dbl_form" if s.dev_insecure_cookies else "__Host-dbl_form"          # __Host- blocks cookie tossing from sibling subdomains
     form_key = hashlib.sha256(b"dbl-form-csrf" + s.encryption_key.encode()).digest()
 
     def form_token(cookie: str) -> str:
@@ -429,7 +436,8 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
         if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", cookie):
             cookie = secrets.token_urlsafe(24)
         path = request.url.path
-        ctx = {"base_url": s.base_url, "path": path, "robots": '<meta name="robots" content="noindex,nofollow">',
+        nxt = path + ("?" + request.url.query if request.url.query else "")
+        ctx = {"base_url": s.base_url, "path": path, "lang_next_q": quote(nxt, safe="") if len(nxt) <= 300 else "", "robots": '<meta name="robots" content="noindex,nofollow">',
                "message": banner(kind, message), "form": build(form_token(cookie), st)}
         resp = HTMLResponse(site.render_page(name, lang, ctx), status, headers={
             "Content-Security-Policy": CSP, "Cache-Control": "no-store", "Vary": "Accept-Language, Cookie"})
@@ -683,7 +691,7 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
                 if not isinstance(v, list) or len(v) > 20 or not all(isinstance(o, str) and ORIGIN_RE.match(o) for o in v):
                     raise ApiError(400, "invalid_setting", "capture_origins must be a list of origins like https://example.com")
                 updates[k] = [o.lower() for o in v]
-            elif not isinstance(v, str) or len(v) > (300 if k in SECRET_KEYS else 120):
+            elif not isinstance(v, str) or len(v) > (300 if k in SECRET_KEYS else 120) or any(ord(c) < 32 or ord(c) == 127 for c in v):
                 raise ApiError(400, "invalid_setting", f"{k} must be text of at most {300 if k in SECRET_KEYS else 120} characters.")
             elif k in SECRET_KEYS and not v.strip():
                 continue                                          # an empty secret field means "leave unchanged"
@@ -691,8 +699,13 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
                 raise ApiError(400, "invalid_setting", "agency_name cannot be empty.")
             else:
                 updates[k] = v.strip()
+        if not info.email_verified and (updates.get("capture_origins") or any(updates.get(k) for k in SECRET_KEYS)):
+            raise ApiError(403, "not_verified", "Verify your email address before adding integrations or website origins.")
         for k, v in updates.items():
             tenants.set_setting(info.tenant_id, k, v)
+        if "agency_name" in updates:
+            with control.tx() as c:
+                c.execute("UPDATE tenants SET name=? WHERE id=?", (updates["agency_name"], info.tenant_id))
         tenants.evict(info.tenant_id)                             # the workspace app is rebuilt with the new settings on its next request
         control.audit("settings_updated", user_id=info.user_id, tenant_id=info.tenant_id, fields=sorted(updates))
         return _json(200, {"ok": True})
@@ -783,7 +796,17 @@ def create_platform_app(settings: Settings, mailer: Mailer | None = None, inline
         return _json(200, {"user": {"email": info.email, "name": info.name, "lang": info.lang, "email_verified": info.email_verified},
                            "role": info.role, "agent_id": info.agent_id, "csrf_token": info.csrf_token,
                            "workspace": {"id": info.tenant_id, "name": info.tenant_name, "public_key": t["public_key"] if t else None},
+                           "workspaces": accounts.workspaces_of(info.user_id),
                            "mfa_enabled": bool(u and u["totp_enabled"])})
+
+    @app.post("/auth/workspace")
+    async def switch_workspace(request: Request):
+        info, raw = current(request, csrf=True)
+        tid = (await body(request)).get("tenant_id")
+        if not isinstance(tid, int) or isinstance(tid, bool):
+            raise ApiError(400, "invalid_input", "tenant_id must be a number.")
+        token = await run(accounts.switch_workspace, info.user_id, tid, raw, client_ip(request))
+        return set_session_cookies(_json(200, {"status": "ok"}), token)
 
     @app.post("/auth/password")
     async def password(request: Request):

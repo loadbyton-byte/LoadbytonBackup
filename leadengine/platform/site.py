@@ -82,6 +82,7 @@ def jsonld(name: str, lang: str, base_url: str) -> str:
     graph: list[dict] = [
         {"@type": "Organization", "name": st["brand"], "url": base_url, "logo": f"{base_url}/static/brand/favicon-512.png"},
         {"@type": "WebSite", "name": st["brand"], "url": base_url, "inLanguage": lang},
+        {"@type": "SoftwareApplication", "name": st["brand"], "applicationCategory": "BusinessApplication", "operatingSystem": "Web", "url": base_url},
     ]
     if name == "faq":
         graph.append({"@type": "FAQPage", "mainEntity": [
@@ -103,9 +104,10 @@ def render_page(name: str, lang: str, ctx: dict | None = None) -> str:
     key = name.replace("auth_", "auth.")
     ctx.update({
         "lang": lang, "dir": "rtl" if lang == "ar" else "ltr", "title": title, "description": st[f"{key}.desc"], "base_url": base,
-        "canonical": f"{base}{path}", "alt_en": f"{base}{path}?lang=en", "alt_ar": f"{base}{path}?lang=ar",
+        "canonical": f"{base}{path}?lang={lang}", "alt_en": f"{base}{path}?lang=en", "alt_ar": f"{base}{path}?lang=ar",
         "og_locale": "ar_AE" if lang == "ar" else "en_AE", "other_lang": "en" if lang == "ar" else "ar", "path_q": quote(path, safe=""),
     })
+    ctx["path_q"] = ctx.get("lang_next_q") or ctx["path_q"]
     ctx.setdefault("price", pricing_text(lang))
     ctx.setdefault("jsonld", jsonld(name, lang, base))
     body = _render(_expand(_template(name)), lang, ctx)
@@ -133,5 +135,5 @@ def detect_lang(accept_language: str | None, cookie: str | None, query: str | No
 
 def sitemap_xml(base_url: str) -> str:
     base = base_url.rstrip("/")
-    urls = "".join(f"<url><loc>{html.escape(base + p, quote=True)}</loc></url>" for p, _ in PAGES.values())
+    urls = "".join(f"<url><loc>{html.escape(base + p + q, quote=True)}</loc></url>" for p, _ in PAGES.values() for q in ("", "?lang=en", "?lang=ar"))
     return f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>'
