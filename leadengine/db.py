@@ -44,6 +44,17 @@ CREATE TABLE IF NOT EXISTS web_sessions(
   token_hash TEXT PRIMARY KEY, state TEXT NOT NULL, lang TEXT, ip_hash TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_web_sessions_expires ON web_sessions(expires_at);
+CREATE TABLE IF NOT EXISTS deals(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL, agent_id INTEGER,
+  kind TEXT NOT NULL, title TEXT, area TEXT, value_aed REAL NOT NULL, commission_pct REAL NOT NULL, commission_aed REAL NOT NULL,
+  vat_aed REAL NOT NULL, split_pct REAL DEFAULT 0, expected_close TEXT, stage TEXT NOT NULL, lost_reason TEXT, notes TEXT,
+  created_at TEXT, updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_deals_stage ON deals(stage);
+CREATE TABLE IF NOT EXISTS deal_events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, deal_id INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE, ts TEXT, from_stage TEXT, to_stage TEXT, actor TEXT
+);
+CREATE TRIGGER IF NOT EXISTS trg_deals_erase BEFORE DELETE ON leads BEGIN UPDATE deals SET notes=NULL, title=NULL WHERE lead_id=OLD.id; END;
 CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS sequences(
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, trigger TEXT NOT NULL, enabled INTEGER DEFAULT 1, min_consent TEXT DEFAULT 'opted_in',
