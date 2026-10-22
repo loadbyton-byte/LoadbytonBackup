@@ -448,6 +448,10 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     def fu_pause(lead_id: int, _=Depends(auth)):
         return {"stopped": fu.stop(lead_id, "paused")}
 
+    @app.get("/followups/stats")
+    def fu_stats(_=Depends(auth)):
+        return fu.stats()
+
     @app.post("/maintenance/followups")
     def fu_tick(_=Depends(auth)):
         return fu.tick()
@@ -590,7 +594,12 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
 
     @app.post("/inventory")
     async def inventory(request: Request, _=Depends(auth)):
-        return import_projects_csv(db, (await request.body()).decode("utf-8-sig"))
+        before = (db.one("SELECT COALESCE(MAX(id),0) m FROM projects"))["m"]
+        out = import_projects_csv(db, (await request.body()).decode("utf-8-sig"))
+        alerted = 0
+        for r in db.q("SELECT id FROM projects WHERE id>?", (before,)):                 # new projects only: consented, matching leads get one offer
+            alerted += len(fu.alert_new_project(r["id"], golden_min=s.golden_visa_min_aed))
+        return {**out, "alerts_queued": alerted}
 
     @app.get("/inventory")
     def list_inventory(_=Depends(auth)):

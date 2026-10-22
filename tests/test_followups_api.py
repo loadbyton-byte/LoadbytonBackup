@@ -106,3 +106,13 @@ def test_whatsapp_inbound_stops_run(monkeypatch):
     c.post("/capture", json=FORM)
     fu = c.app.state.followups
     assert fu.stop_for_phone("+971501234567", "replied") == 2
+
+
+def test_stats_endpoint_and_inventory_import_queues_alerts():
+    c = client()
+    c.post("/capture", json=FORM)
+    assert c.get("/followups/stats").json()["queued"] == 0
+    csv = "name,developer,area,min_price,max_price,bedrooms,handover\nMarina Gate,Emaar,Dubai Marina,1500000,2500000,\"1,2\",2028\n"
+    r = c.post("/inventory", content=csv)
+    assert r.json()["imported"] == 1 and r.json()["alerts_queued"] == 1
+    assert c.post("/inventory", content=csv).json()["alerts_queued"] == 0                 # re-import updates, it is not a new project

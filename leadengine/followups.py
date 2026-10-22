@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from .compliance import Compliance
 from .config import Settings
 from .db import DB
+from .inventory import match as match_projects
 from .models import utcnow
 
 CHANNELS = ("whatsapp", "email", "auto")                 # "auto" = WhatsApp if the lead has a phone, else email
@@ -97,8 +98,9 @@ class _Config:
             c.execute("INSERT OR REPLACE INTO kv(key,value) VALUES('followups_seeded','1')")
 
     def sequences(self) -> list[dict]:
+        self.ensure_defaults()
         return [{"id": r["id"], "name": r["name"], "trigger": r["trigger"], "enabled": bool(r["enabled"]), "steps": json.loads(r["steps"])}
-                for r in self.db.q("SELECT * FROM sequences ORDER BY id")]
+                for r in self.db.q("SELECT * FROM sequences WHERE trigger!='project_alert' ORDER BY id")]
 
     def put_sequences(self, seqs) -> list[dict]:
         clean = _validate(seqs)
@@ -367,5 +369,65 @@ class _Mixin:
         return sum(self.stop(r["id"], reason) for r in self.db.q("SELECT id FROM leads WHERE phone IN (?,?)", (digits, "+" + digits)))
 
 
-class Followups(_Config, _Mixin):
-    """Sequences + enrolment (`_Config`) and the worker, approval queue and stop rules (`_Mixin`)."""
+class _Insights:
+    """Speed-to-lead metrics and new-project alerts."""
+
+    def stats(self) -> dict:
+        from statistics import median
+        from .scoring import SLA_MINUTES
+        gaps, within = [], []
+        rows = self.db.q(f"SELECT l.first_seen, l.tier, MIN(t.sent_at) sent FROM touches t JOIN leads l ON l.id=t.lead_id "
+                         f"WHERE t.status IN ({','.join('?' * len(_SENT))}) AND l.first_seen IS NOT NULL GROUP BY t.lead_id", _SENT)
+        for r in rows:
+            mins = max(0.0, (_parse(r["sent"]) - _parse(r["first_seen"])).total_seconds() / 60)
+            gaps.append(mins)
+            if r["tier"] in SLA_MINUTES:
+                within.append(mins <= SLA_MINUTES[r["tier"]])
+        per_step = []
+        for r in self.db.q(f"SELECT q.name sequence, t.step_index step, COUNT(*) sent FROM touches t JOIN sequence_runs sr ON sr.id=t.run_id "
+                           f"JOIN sequences q ON q.id=sr.sequence_id WHERE t.status IN ({','.join('?' * len(_SENT))}) AND q.trigger!='project_alert' "
+                           f"GROUP BY q.name, t.step_index ORDER BY q.id, t.step_index", _SENT):
+            replied = self.db.one(
+                f"SELECT COUNT(*) n FROM sequence_runs sr JOIN sequences q ON q.id=sr.sequence_id WHERE q.name=? AND sr.stop_reason='replied' AND "
+                f"(SELECT MAX(step_index) FROM touches WHERE run_id=sr.id AND status IN ({','.join('?' * len(_SENT))}))=?", (r["sequence"], *_SENT, r["step"]))["n"]
+            per_step.append({**dict(r), "replied": replied})
+        count = lambda st: self.db.one("SELECT COUNT(*) n FROM touches WHERE status=?", (st,))["n"]      # noqa: E731
+        return {"first_response_median_minutes": round(median(gaps), 1) if gaps else None,
+                "within_sla_pct": round(100 * sum(within) / len(within)) if within else None,
+                "queued": count("queued_for_approval"), "failed": count("failed"), "per_step": per_step}
+
+    def alert_new_project(self, project_id: int, now: datetime | None = None, golden_min: float = 2_000_000) -> list[int]:
+        """Offer a newly imported project to consented leads whose area (hard) and budget fit. One alert per lead per week."""
+        now = now or utcnow()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        p = self.db.one("SELECT * FROM projects WHERE id=?", (project_id,))
+        if not p:
+            return []
+        clean = lambda v: re.sub(r"[{}]", "", str(v or ""))                                             # noqa: E731
+        price = f"AED {p['min_price'] / 1e6:.1f}M" if p["min_price"] >= 1e6 else f"AED {p['min_price'] / 1e3:.0f}K"
+        text = (f"Hi {{name}}, {{agent}} here. A new project just launched in {clean(p['area'])}: {clean(p['name'])}"
+                f"{' by ' + clean(p['developer']) if p['developer'] else ''}, from {price}. Want the brochure and payment plan?")
+        name, alerted = f"alert:{project_id}", []
+        week_ago = _iso(now - timedelta(days=7))
+        for lead in self.db.q("SELECT * FROM leads WHERE consent_status='opted_in' AND opted_out=0 AND tier!='DISCARD'"):
+            d = dict(lead)
+            hit = next((m for m in match_projects(self.db, d, golden_min, limit=200, now=now.replace(tzinfo=None)) if m["project"] == p["name"]), None)
+            if not hit or (d.get("budget_max") and not any(r.startswith("budget") for r in hit["reasons"])):
+                continue
+            if self.db.one("SELECT 1 FROM sequence_runs r JOIN sequences q ON q.id=r.sequence_id WHERE r.lead_id=? AND q.trigger='project_alert' AND r.started_at>?",
+                           (d["id"], week_ago)):
+                continue
+            with self.db.tx() as c:
+                c.execute("INSERT OR IGNORE INTO sequences(name,trigger,enabled,steps,created_at) VALUES(?,?,?,?,?)",
+                          (name, "project_alert", 0, json.dumps([{"delay_hours": 0, "channel": "auto", "template_en": text, "template_ar": None}]), _iso(now)))
+                sid = c.execute("SELECT id FROM sequences WHERE name=?", (name,)).fetchone()["id"]
+                cur = c.execute("INSERT OR IGNORE INTO sequence_runs(lead_id,sequence_id,state,started_at) VALUES(?,?,?,?)", (d["id"], sid, "active", _iso(now)))
+                if cur.rowcount:
+                    c.execute("INSERT INTO touches(run_id,lead_id,step_index,channel,due_at) VALUES(?,?,?,?,?)", (cur.lastrowid, d["id"], 0, "auto", _iso(now)))
+                    alerted.append(d["id"])
+        return alerted
+
+
+class Followups(_Config, _Mixin, _Insights):
+    """Sequences + enrolment (`_Config`), the worker, approval queue and stop rules (`_Mixin`), metrics and alerts (`_Insights`)."""
