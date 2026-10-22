@@ -69,13 +69,19 @@ def roi_report(db: DB, now: datetime | None = None, period: str | None = None) -
         if period is None or r["period"] == period:
             key = canonical(r["source"])
             spend[key] = spend.get(key, 0.0) + r["amount_aed"]
-    stats: dict[str, dict] = {s: {"leads": 0, "qualified": 0, "won": 0, "sla_den": 0, "sla_ok": 0, "resp": []} for s in spend}
+    stats: dict[str, dict] = {s: {"leads": 0, "qualified": 0, "won": 0, "sla_den": 0, "sla_ok": 0, "resp": [], "revenue": 0.0, "commission": 0.0} for s in spend}
+    money = {}                                                          # closed-won (paid) deals per lead
+    for r in db.q("SELECT lead_id, SUM(value_aed) v, SUM(commission_aed) c FROM deals WHERE stage='paid' AND lead_id IS NOT NULL GROUP BY lead_id"):
+        money[r["lead_id"]] = (r["v"] or 0.0, r["c"] or 0.0)
     for lead in db.q("SELECT id, tier, status, first_seen FROM leads"):
         src = first_signal.get(lead["id"])
         if src is None or (period is not None and not lead["first_seen"].startswith(period)):
             continue
-        s = stats.setdefault(src, {"leads": 0, "qualified": 0, "won": 0, "sla_den": 0, "sla_ok": 0, "resp": []})
+        s = stats.setdefault(src, {"leads": 0, "qualified": 0, "won": 0, "sla_den": 0, "sla_ok": 0, "resp": [], "revenue": 0.0, "commission": 0.0})
         s["leads"] += 1
+        v, cm = money.get(lead["id"], (0.0, 0.0))
+        s["revenue"] += v
+        s["commission"] += cm
         s["qualified"] += lead["tier"] in QUALIFIED
         s["won"] += lead["status"] == "won"
         seen = datetime.fromisoformat(lead["first_seen"])
@@ -100,5 +106,7 @@ def roi_report(db: DB, now: datetime | None = None, period: str | None = None) -
             "cost_per_qualified": _ratio(total, s["qualified"]) if paid else None,
             "cost_per_won": _ratio(total, s["won"]) if paid else None,
             "win_rate_pct": round(100 * s["won"] / s["leads"]) if s["leads"] else None,
+            "revenue_aed": round(s["revenue"], 2), "commission_aed": round(s["commission"], 2),
+            "commission_per_spend": _ratio(s["commission"], total) if paid else None,
         })
     return out

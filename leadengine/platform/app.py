@@ -41,7 +41,7 @@ LIMIT_AUTH, LIMIT_PUBLIC, LIMIT_API, LIMIT_OTHER = 32 * 1024, 256 * 1024, 8 * 10
 REGISTER_FLOOR_S, FORGOT_FLOOR_S = 0.4, 0.15      # minimum response time: new and existing addresses look alike
 # First path segment of the workspace API (what the dispatcher takes over). Everything else belongs to the platform app.
 TENANT_PREFIXES = frozenset("leads agents tasks roi spend inventory viewings viewings.ics radar stats audit ingest connectors tools markets "
-                            "maintenance demo overview magnets followups".split())
+                            "maintenance demo overview magnets followups deals".split())
 PUBLIC_EXACT = frozenset({"/capture", "/widget.js", "/optout", "/webhooks/meta", "/webhooks/whatsapp", "/unsubscribe"})
 PUBLIC_FORM = re.compile(r"^/webhooks/form/[a-z0-9_-]{1,32}$")
 PUBLIC_PAGES = re.compile(r"^/p(/(affordability|costs|yield|mortgage|concierge|lead))?$")        # lead magnets + concierge
@@ -225,9 +225,30 @@ class Dispatcher:
               if k not in ("agent_id", "assigned_agent_id")]
         if path == "/leads":
             qs.append(("assigned_agent_id", str(me)))
-        elif path in ("/viewings", "/tasks/today"):
+        elif path in ("/viewings", "/tasks/today", "/deals", "/deals/summary", "/deals/leaderboard"):
             qs.append(("agent_id", str(me)))
         fwd = {**fwd, "query_string": urlencode(qs).encode()}
+        if path == "/deals" and method == "POST":                          # own deals only, for leads assigned to them
+            data = await self._json_body(receive)
+            if not isinstance(data, dict):
+                return _json(400, {"error": "invalid_json", "message": "Invalid JSON."})
+            lead = db.one("SELECT assigned_agent_id FROM leads WHERE id=?", (data.get("lead_id") if isinstance(data.get("lead_id"), int) else -1,))
+            if not lead or agent_id is None or lead["assigned_agent_id"] != agent_id:
+                return _json(403, {"error": "forbidden", "message": "That lead is not assigned to you."})
+            data["agent_id"] = agent_id
+            return self._with_body(fwd, receive, data)
+        dm = re.match(r"^/deals/(\d+)(/stage)?$", path)
+        if dm:
+            row = db.one("SELECT agent_id FROM deals WHERE id=?", (int(dm.group(1)),))
+            if not row or agent_id is None or row["agent_id"] != agent_id:
+                return _json(403, {"error": "forbidden", "message": "That deal is not yours."})
+            if method == "PATCH":
+                data = await self._json_body(receive)
+                if not isinstance(data, dict):
+                    return _json(400, {"error": "invalid_json", "message": "Invalid JSON."})
+                data.pop("agent_id", None)                                  # agents cannot hand a deal to someone else
+                return self._with_body(fwd, receive, data)
+            return fwd, receive
         m = re.match(r"^/leads/(\d+)(/.*)?$", path)
         if not m:
             return fwd, receive
@@ -249,6 +270,19 @@ class Dispatcher:
             receive = _replay(json.dumps(data).encode(), receive)
             fwd = {**fwd, "headers": [(k, v) for k, v in fwd["headers"] if k.lower() != b"content-length"]}
         return fwd, receive
+
+    @staticmethod
+    async def _json_body(receive):
+        body = await _read_body(receive, LIMIT_OTHER)
+        try:
+            return json.loads(body or b"{}")
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _with_body(fwd: dict, receive, data: dict):
+        fwd = {**fwd, "headers": [(k, v) for k, v in fwd["headers"] if k.lower() != b"content-length"]}
+        return fwd, _replay(json.dumps(data).encode(), receive)
 
     def _session(self, headers: dict) -> SessionInfo | None:
         raw = session_cookie(headers.get(b"cookie", b"").decode("latin-1"))

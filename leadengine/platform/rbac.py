@@ -34,11 +34,15 @@ _RULES: list[tuple[frozenset[str], re.Pattern[str], str]] = [
     (frozenset({"GET"}), re.compile(r"^/leads/" + _ID + r"(/(matches|next-actions|deal-sheet))?$"), "agent"),
     (frozenset({"POST"}), re.compile(r"^/leads/" + _ID + r"/(status|activities|viewings|outreach)$"), "agent"),
     (frozenset({"GET"}), re.compile(r"^/tasks/today$"), "agent"),
+    (frozenset({"GET"}), re.compile(r"^/deals(/summary|/leaderboard|/" + _ID + ")?$"), "agent"),
+    (frozenset({"POST"}), re.compile(r"^/deals$"), "agent"),
+    (frozenset({"PATCH"}), re.compile(r"^/deals/" + _ID + "$"), "agent"),
+    (frozenset({"POST"}), re.compile(r"^/deals/" + _ID + "/stage$"), "agent"),
     (frozenset({"GET"}), re.compile(r"^/viewings$"), "agent"),
     # manager-level: everything else the workspace API offers
-    (frozenset({"PUT"}), re.compile(r"^/followups/(sequences|settings)$"), "manager"),
+    (frozenset({"PUT"}), re.compile(r"^/(followups/(sequences|settings)|deals/settings)$"), "manager"),
     (frozenset({"GET", "POST", "PATCH"}),
-     re.compile(r"^/(agents|audit|connectors|followups|ingest|inventory|leads|magnets|markets|overview|radar|roi|spend|stats|tasks|tools|viewings(\.ics)?|maintenance/(escalate|rescore|followups))(/.*)?$"),
+     re.compile(r"^/(agents|audit|connectors|deals|followups|ingest|inventory|leads|magnets|markets|overview|radar|roi|spend|stats|tasks|tools|viewings(\.ics)?|maintenance/(escalate|rescore|followups))(/.*)?$"),
      "manager"),
 ]
 

@@ -31,6 +31,7 @@ from .nba import next_actions, todays_tasks
 from .outreach import draft
 from .pipeline import FORM_SOURCES, Pipeline
 from .radar import demand_radar
+from .deals import Deals, DealError
 from .followups import Followups, FollowupError, SequenceError
 from .platform.mailer import make_mailer
 from .viewings import ViewingConflict, feed_token, list_viewings, schedule as schedule_viewing, to_ics
@@ -149,6 +150,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
             fu.stop_if_replied(lead_id)
         fu.enroll(lead_id, "new_lead", exclude=("first_response",) if sig.platform == "whatsapp" else ())
 
+    deals = Deals(db, fu)
     pipe.on_lead_event = lead_event
     reg = ConnectorRegistry()
     meta, forms = MetaLeadAdsConnector(s), FormWebhookConnector(s)
@@ -156,7 +158,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
         reg.register(c)
 
     app = FastAPI(title="DigitalBurj Leads", version="1.0.0")
-    app.state.pipeline, app.state.db, app.state.settings, app.state.followups = pipe, db, s, fu
+    app.state.pipeline, app.state.db, app.state.settings, app.state.followups, app.state.deals = pipe, db, s, fu, deals
     app.mount("/static", StaticFiles(directory=DASH.parent), name="static")
     app.mount("/site-static", StaticFiles(directory=sitelib.SITE_DIR / "static"), name="site-static")
 
@@ -404,6 +406,61 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     @app.post("/maintenance/escalate")
     def escalate(_=Depends(auth)):
         return pipe.distribution.escalate_overdue()
+
+    # ---------------------------------------------------------------- deals
+    def deal_call(fn, *a, **k):
+        try:
+            return fn(*a, **k)
+        except DealError as e:
+            raise HTTPException(e.code, str(e))
+
+    @app.get("/deals/summary")
+    def deals_summary(agent_id: int | None = None, _=Depends(auth)):
+        return deals.summary(agent_id=agent_id)
+
+    @app.get("/deals/leaderboard")
+    def deals_leaderboard(period: str | None = None, agent_id: int | None = None, _=Depends(auth)):
+        return deal_call(deals.leaderboard, period=period, agent_id=agent_id)
+
+    @app.get("/deals/settings")
+    def deals_settings(_=Depends(auth)):
+        return deals.settings()
+
+    @app.put("/deals/settings")
+    def deals_put_settings(payload: dict, _=Depends(auth)):
+        return deal_call(deals.put_settings, payload)
+
+    @app.get("/deals")
+    def deals_list(stage: str | None = None, agent_id: int | None = None, kind: str | None = None, _=Depends(auth)):
+        return deals.list(stage=stage, agent_id=agent_id, kind=kind)
+
+    @app.post("/deals")
+    def deals_create(payload: dict, _=Depends(auth)):
+        lead_id = payload.get("lead_id")
+        if isinstance(lead_id, bool) or not isinstance(lead_id, int):
+            raise HTTPException(422, "lead_id must be a whole number")
+        agent_id = payload.get("agent_id")
+        if agent_id is None:
+            row = db.one("SELECT assigned_agent_id FROM leads WHERE id=?", (lead_id,))
+            agent_id = row["assigned_agent_id"] if row else None
+        known = {"kind", "value_aed", "stage", "title", "area", "commission_pct", "split_pct", "expected_close", "notes"}
+        extra = {k: v for k, v in payload.items() if k in known and k not in ("kind", "value_aed")}
+        return deal_call(deals.create, lead_id, agent_id, payload.get("kind"), payload.get("value_aed"), actor="api", **extra)
+
+    @app.get("/deals/{deal_id}")
+    def deals_get(deal_id: int, _=Depends(auth)):
+        d = deals.get(deal_id)
+        if not d:
+            raise HTTPException(404, "deal not found")
+        return d
+
+    @app.patch("/deals/{deal_id}")
+    def deals_patch(deal_id: int, payload: dict, _=Depends(auth)):
+        return deal_call(deals.update, deal_id, payload, "api")
+
+    @app.post("/deals/{deal_id}/stage")
+    def deals_stage(deal_id: int, payload: dict, _=Depends(auth)):
+        return deal_call(deals.move, deal_id, payload.get("stage"), "api", lost_reason=payload.get("lost_reason"))
 
     # ---------------------------------------------------------------- follow-up engine
     @app.get("/followups/sequences")
@@ -681,6 +738,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
         return {"new_today": per_day[today.isoformat()], "hot": tiers.get("HOT", 0), "warm": tiers.get("WARM", 0), "overdue": overdue,
                 "within_sla_pct": round(100 * ok / den) if den else None, "by_status": by_status,
                 "trend": [{"date": d, "leads": n} for d, n in per_day.items()],
+                "pipeline_value_aed": (pl := deals.summary())["pipeline_value_aed"], "expected_commission_aed": pl["expected_commission_aed"],
                 "onboarding": {"agents": bool(db.one("SELECT 1 FROM agents LIMIT 1")), "inventory": bool(db.one("SELECT 1 FROM projects LIMIT 1")),
                                "widget_origin": bool(s.capture_origins), "whatsapp": bool(s.whatsapp_phone_id or s.whatsapp_token)}}
 
