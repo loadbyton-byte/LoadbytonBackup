@@ -437,8 +437,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     @app.post("/deals")
     def deals_create(payload: dict, _=Depends(auth)):
         lead_id = payload.get("lead_id")
-        if isinstance(lead_id, bool) or not isinstance(lead_id, int):
-            raise HTTPException(422, "lead_id must be a whole number")
+        if isinstance(lead_id, bool) or not isinstance(lead_id, int) or not 0 < lead_id < 2 ** 63:
+            raise HTTPException(422, "lead_id must be a valid lead number")
         agent_id = payload.get("agent_id")
         if agent_id is None:
             row = db.one("SELECT assigned_agent_id FROM leads WHERE id=?", (lead_id,))

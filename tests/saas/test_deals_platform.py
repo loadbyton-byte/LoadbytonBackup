@@ -53,3 +53,23 @@ def test_settings_and_isolation(tmp_path, team):  # noqa: F811
     assert owner.put("/deals/settings", json={"commission_sale_pct": 3}, headers=oh).status_code == 200
     other, oth = signed_in(app, app.state.accounts.mailer, "z@z.ae", "Zed")
     assert other.get("/deals").json() == [] and other.get("/deals/settings").json()["commission_sale_pct"] == 2
+
+
+def test_agent_cannot_set_pay_or_confirm_payment(team):  # noqa: F811
+    app, owner, oh, agent = team
+    c, h = agent("ann@a.ae", 1)
+    did = c.post("/deals", json={"lead_id": 1, "kind": "sale", "value_aed": 1_000_000}, headers=h).json()["id"]
+    got = c.patch(f"/deals/{did}", json={"commission_pct": 100, "value_aed": 9_999_999, "split_pct": 0, "title": "mine"}, headers=h).json()
+    assert got["commission_pct"] == 2 and got["value_aed"] == 1_000_000 and got["title"] == "mine"            # money fields are managers' only
+    assert c.post(f"/deals/{did}/stage", json={"stage": "paid"}, headers=h).status_code == 403
+    assert c.post(f"/deals/{did}/stage", json={"stage": "contract_signed"}, headers=h).status_code == 200
+    owner.post(f"/deals/{did}/stage", json={"stage": "paid"}, headers=oh)
+    assert c.post(f"/deals/{did}/stage", json={"stage": "offer_made"}, headers=h).status_code == 403       # nor walk a paid deal back
+    assert owner.get("/deals/leaderboard").json()[0]["commission_aed"] == 20_000
+
+
+def test_agent_huge_lead_id_is_a_clean_error(team):  # noqa: F811
+    app, owner, oh, agent = team
+    c, h = agent("ann@a.ae", 1)
+    r = c.post("/deals", content='{"lead_id": 1' + "0" * 30 + ', "kind": "sale", "value_aed": 1000000}', headers={**h, "content-type": "application/json"})
+    assert r.status_code == 403

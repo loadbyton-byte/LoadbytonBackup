@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
+from .compliance import GST
 from .db import DB
 from .models import utcnow
 
@@ -17,7 +18,7 @@ WON = ("offer_accepted", "contract_signed", "paid")
 KINDS = ("sale", "off_plan", "rental")
 MAX_VALUE = 1e10
 DEFAULTS = {"commission_sale_pct": 2.0, "commission_rental_pct": 5.0, "vat_pct": 5.0}
-_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 class DealError(ValueError):
@@ -27,8 +28,14 @@ class DealError(ValueError):
 
 
 def _num(v, name: str, lo: float, hi: float, lo_open: bool = False) -> float:
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
         raise DealError(f"{name} must be a number")
+    try:
+        ok = math.isfinite(v) and abs(v) <= 1e15
+    except OverflowError:
+        ok = False
+    if not ok:
+        raise DealError(f"{name} must be a reasonable number")
     if (v <= lo if lo_open else v < lo) or v > hi:
         raise DealError(f"{name} must be {'above' if lo_open else 'between'} {lo}{'' if lo_open else ' and ' + str(hi)}")
     return float(v)
@@ -40,6 +47,22 @@ def _text(v, name: str, cap: int) -> str | None:
     if not isinstance(v, str) or len(v) > cap:
         raise DealError(f"{name} must be text of at most {cap} characters")
     return v.strip() or None
+
+
+def _valid_date(v) -> bool:
+    if not (isinstance(v, str) and _DATE.fullmatch(v)):
+        return False
+    try:
+        date.fromisoformat(v)
+    except ValueError:
+        return False
+    return True
+
+
+def _month(ts: str) -> str:
+    """Calendar month in Dubai time (UTC+4) of a stored UTC timestamp."""
+    d = datetime.fromisoformat(ts)
+    return (d if d.tzinfo else d.replace(tzinfo=timezone.utc)).astimezone(GST).strftime("%Y-%m")
 
 
 def _money(x: float) -> float:
@@ -83,14 +106,18 @@ class Deals:
             raise DealError(f"kind must be one of {KINDS}")
         if stage not in OPEN:
             raise DealError(f"a new deal starts at one of {OPEN}")
-        if not self.db.one("SELECT 1 FROM leads WHERE id=?", (lead_id,)):
-            raise DealError("lead not found", 404)
         value = _num(value_aed, "value_aed", 0, MAX_VALUE, lo_open=True)
         split = _num(split_pct, "split_pct", 0, 100)
         cfg = self.settings()
         pct = _num(commission_pct, "commission_pct", 0, 100) if commission_pct is not None else (cfg["commission_rental_pct"] if kind == "rental" else cfg["commission_sale_pct"])
-        if expected_close is not None and not (isinstance(expected_close, str) and _DATE.match(expected_close)):
-            raise DealError("expected_close must be YYYY-MM-DD")
+        if expected_close is not None and not _valid_date(expected_close):
+            raise DealError("expected_close must be a real date, YYYY-MM-DD")
+        if agent_id is not None and (isinstance(agent_id, bool) or not isinstance(agent_id, int) or not 0 <= agent_id < 2 ** 31):
+            raise DealError("agent_id must be a whole number")
+        if isinstance(lead_id, bool) or not isinstance(lead_id, int) or not 0 < lead_id < 2 ** 63:
+            raise DealError("lead not found", 404)
+        if not self.db.one("SELECT 1 FROM leads WHERE id=?", (lead_id,)):
+            raise DealError("lead not found", 404)
         commission, vat = self._calc(value, pct, split)
         now = utcnow().isoformat()
         with self.db.tx() as c:
@@ -100,6 +127,7 @@ class Deals:
                              _text(notes, "notes", 2000), now, now)).lastrowid
             c.execute("INSERT INTO deal_events(deal_id,ts,from_stage,to_stage,actor) VALUES(?,?,?,?,?)", (did, now, None, stage, actor))
         self.db.audit(actor, "deal_created", lead_id, deal=did, value=value)
+        self._sync_lead(lead_id)
         return self.get(did)
 
     def update(self, deal_id: int, fields: dict, actor: str) -> dict:
@@ -113,6 +141,10 @@ class Deals:
             if fields["kind"] not in KINDS:
                 raise DealError(f"kind must be one of {KINDS}")
             new["kind"] = fields["kind"]
+            cfg = self.settings()
+            default_of = lambda k: cfg["commission_rental_pct"] if k == "rental" else cfg["commission_sale_pct"]          # noqa: E731
+            if "commission_pct" not in fields and cur["commission_pct"] == default_of(cur["kind"]):
+                new["commission_pct"] = default_of(fields["kind"])                  # an unedited default follows the new kind
         if "value_aed" in fields:
             new["value_aed"] = _num(fields["value_aed"], "value_aed", 0, MAX_VALUE, lo_open=True)
         if "commission_pct" in fields:
@@ -129,10 +161,11 @@ class Deals:
                 new[k] = _text(fields[k], k, cap)
         if "expected_close" in fields:
             ec = fields["expected_close"]
-            if ec is not None and not (isinstance(ec, str) and _DATE.match(ec)):
-                raise DealError("expected_close must be YYYY-MM-DD")
+            if ec is not None and not _valid_date(ec):
+                raise DealError("expected_close must be a real date, YYYY-MM-DD")
             new["expected_close"] = ec
-        new["commission_aed"], new["vat_aed"] = self._calc(new["value_aed"], new["commission_pct"], new["split_pct"])
+        if any(new[k] != cur[k] for k in ("value_aed", "commission_pct", "split_pct")):
+            new["commission_aed"], new["vat_aed"] = self._calc(new["value_aed"], new["commission_pct"], new["split_pct"])          # reprice only when money changed
         cols = ("title", "area", "value_aed", "commission_pct", "split_pct", "expected_close", "notes", "kind", "agent_id", "commission_aed", "vat_aed")
         with self.db.tx() as c:
             c.execute(f"UPDATE deals SET {','.join(k + '=?' for k in cols)}, updated_at=? WHERE id=?", (*[new[k] for k in cols], utcnow().isoformat(), deal_id))
@@ -150,30 +183,38 @@ class Deals:
         if stage == "lost" and not reason:
             raise DealError("a lost deal needs a reason")
         now = utcnow().isoformat()
+        if cur["stage"] == stage == "lost" and reason != cur["lost_reason"]:
+            with self.db.tx() as c:
+                c.execute("UPDATE deals SET lost_reason=?, updated_at=? WHERE id=?", (reason, now, deal_id))
         if cur["stage"] != stage:
             with self.db.tx() as c:
                 c.execute("UPDATE deals SET stage=?, lost_reason=?, updated_at=? WHERE id=?", (stage, reason if stage == "lost" else None, now, deal_id))
                 c.execute("INSERT INTO deal_events(deal_id,ts,from_stage,to_stage,actor) VALUES(?,?,?,?,?)", (deal_id, now, cur["stage"], stage, actor))
             self.db.audit(actor, "deal_stage", cur["lead_id"], deal=deal_id, to=stage)
-            self._sync_lead(cur["lead_id"], stage, cur["stage"], now)
+            self._sync_lead(cur["lead_id"])
         return self.get(deal_id)
 
-    def _sync_lead(self, lead_id: int | None, stage: str, previous: str, now: str) -> None:
+    def _sync_lead(self, lead_id: int | None) -> None:
+        """The lead's status follows ALL of its deals: any deal at a won stage wins it, otherwise a live deal reopens it, otherwise it is lost."""
         if lead_id is None:
             return
-        if stage in WON:
+        stages = [r["stage"] for r in self.db.q("SELECT stage FROM deals WHERE lead_id=?", (lead_id,))]
+        lead = self.db.one("SELECT status FROM leads WHERE id=?", (lead_id,))
+        if not stages or not lead:
+            return
+        if any(s in WON for s in stages):
+            target = "won"
+        elif any(s in OPEN for s in stages):
+            target = "qualified" if lead["status"] in ("won", "lost") else lead["status"]
+        else:
+            target = "lost"
+        now = utcnow().isoformat()
+        if target != lead["status"]:
             with self.db.tx() as c:
-                if c.execute("UPDATE leads SET status='won' WHERE id=? AND status!='won'", (lead_id,)).rowcount:
-                    c.execute("INSERT INTO activities(lead_id,ts,kind,note) VALUES(?,?,?,?)", (lead_id, now, "status:won", f"deal {stage}"))
-            if self.fu:
-                self.fu.stop(lead_id, "closed")
-        elif stage == "lost":
-            if not self.db.one("SELECT 1 FROM deals WHERE lead_id=? AND stage!='lost'", (lead_id,)):
-                with self.db.tx() as c:
-                    if c.execute("UPDATE leads SET status='lost' WHERE id=? AND status NOT IN ('lost','won')", (lead_id,)).rowcount:
-                        c.execute("INSERT INTO activities(lead_id,ts,kind,note) VALUES(?,?,?,?)", (lead_id, now, "status:lost", "all deals lost"))
-                if self.fu:
-                    self.fu.stop(lead_id, "closed")
+                c.execute("UPDATE leads SET status=? WHERE id=?", (target, lead_id))
+                c.execute("INSERT INTO activities(lead_id,ts,kind,note) VALUES(?,?,?,?)", (lead_id, now, f"status:{target}", "from deals"))
+        if target in ("won", "lost") and self.fu:
+            self.fu.stop(lead_id, "closed")
 
     # ------------------------------------------------------------------ reads
     def get(self, deal_id: int) -> dict | None:
@@ -199,7 +240,7 @@ class Deals:
 
     def summary(self, agent_id: int | None = None, now: datetime | None = None) -> dict:
         now = now or datetime.now(timezone.utc)
-        month = now.strftime("%Y-%m")
+        month = now.astimezone(GST).strftime("%Y-%m")
         rows = [r for r in self.db.q("SELECT * FROM deals") if agent_id is None or r["agent_id"] == agent_id]
         by_stage = {s: {"count": 0, "value_aed": 0.0, "commission_aed": 0.0} for s in STAGES}
         for r in rows:
@@ -208,7 +249,7 @@ class Deals:
             b["value_aed"] = _money(b["value_aed"] + r["value_aed"])
             b["commission_aed"] = _money(b["commission_aed"] + r["commission_aed"])
         paid = self._paid_ts()
-        closed = [r for r in rows if r["id"] in paid and paid[r["id"]].startswith(month)]
+        closed = [r for r in rows if r["id"] in paid and _month(paid[r["id"]]) == month]
         total_leads = self.db.one("SELECT COUNT(*) n FROM leads" if agent_id is None else "SELECT COUNT(*) n FROM leads WHERE assigned_agent_id=?",
                                   () if agent_id is None else (agent_id,))["n"]
         leads_with_deal = len({r["lead_id"] for r in rows if r["lead_id"] is not None})
@@ -230,12 +271,12 @@ class Deals:
                 continue
             a = agents.setdefault(r["agent_id"], {"agent_id": r["agent_id"], "name": names.get(r["agent_id"]), "deals": 0, "closed_deals": 0,
                                                   "closed_value_aed": 0.0, "commission_aed": 0.0, "leads": set()})
-            if r["stage"] != "lost":
+            if r["stage"] in OPEN:
                 a["deals"] += 1
             if r["lead_id"] is not None:
                 a["leads"].add(r["lead_id"])
             ts = paid.get(r["id"])
-            if ts and (period is None or ts.startswith(period)):
+            if ts and (period is None or _month(ts) == period):
                 a["closed_deals"] += 1
                 a["closed_value_aed"] = _money(a["closed_value_aed"] + r["value_aed"])
                 a["commission_aed"] = _money(a["commission_aed"] + r["commission_aed"])

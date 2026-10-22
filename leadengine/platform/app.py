@@ -232,7 +232,8 @@ class Dispatcher:
             data = await self._json_body(receive)
             if not isinstance(data, dict):
                 return _json(400, {"error": "invalid_json", "message": "Invalid JSON."})
-            lead = db.one("SELECT assigned_agent_id FROM leads WHERE id=?", (data.get("lead_id") if isinstance(data.get("lead_id"), int) else -1,))
+            lid = data.get("lead_id")
+            lead = db.one("SELECT assigned_agent_id FROM leads WHERE id=?", (lid if isinstance(lid, int) and not isinstance(lid, bool) and 0 < lid < 2 ** 63 else -1,))
             if not lead or agent_id is None or lead["assigned_agent_id"] != agent_id:
                 return _json(403, {"error": "forbidden", "message": "That lead is not assigned to you."})
             data["agent_id"] = agent_id
@@ -246,7 +247,16 @@ class Dispatcher:
                 data = await self._json_body(receive)
                 if not isinstance(data, dict):
                     return _json(400, {"error": "invalid_json", "message": "Invalid JSON."})
-                data.pop("agent_id", None)                                  # agents cannot hand a deal to someone else
+                for k in ("agent_id", "commission_pct", "split_pct", "value_aed"):          # agents cannot reassign a deal or set their own pay
+                    data.pop(k, None)
+                return self._with_body(fwd, receive, data)
+            if dm.group(2) and method == "POST":
+                data = await self._json_body(receive)
+                if not isinstance(data, dict):
+                    return _json(400, {"error": "invalid_json", "message": "Invalid JSON."})
+                cur = db.one("SELECT stage FROM deals WHERE id=?", (int(dm.group(1)),))
+                if data.get("stage") == "paid" or (cur and cur["stage"] == "paid"):
+                    return _json(403, {"error": "forbidden", "message": "A manager confirms payment."})
                 return self._with_body(fwd, receive, data)
             return fwd, receive
         m = re.match(r"^/leads/(\d+)(/.*)?$", path)

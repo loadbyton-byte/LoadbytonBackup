@@ -32,7 +32,7 @@ export async function render(el) {
           ${d.lost_reason ? `<p class="mute">${esc(d.lost_reason)}</p>` : ''}
           ${i > 0 ? `<button class="ghost small dl-move" data-to="${STAGES[i - 1]}" type="button">← ${esc(t('dl_s_' + STAGES[i - 1]))}</button>` : ''}
           ${i >= 0 && i < STAGES.length - 1 ? `<button class="primary small dl-move" data-to="${STAGES[i + 1]}" type="button">${esc(t('dl_s_' + STAGES[i + 1]))} →</button>` : ''}
-          ${d.stage !== 'lost' ? `<button class="ghost small dl-lose" type="button">${esc(t('dl_s_lost'))}</button>` : `<button class="ghost small dl-move" data-to="viewing_done" type="button">${esc(t('dl_reopen'))}</button>`}
+          ${d.stage === 'lost' ? `<button class="ghost small dl-move" data-to="viewing_done" type="button">${esc(t('dl_reopen'))}</button>` : d.stage === 'paid' ? '' : `<button class="ghost small dl-lose" type="button">${esc(t('dl_s_lost'))}</button>`}
           <span class="dl-row" role="status"></span></div>`;
       }).join('')}</section>`;
     }).join('');
@@ -71,6 +71,7 @@ export async function render(el) {
       await all();
     } catch (e) { row.innerHTML = err(e); }
   });
+  $('#dl-board', el).addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.classList.contains('dl-reason')) { ev.preventDefault(); $('.dl-confirm-lose', ev.target.closest('.dl-card')).click(); } });
   await loadLeads().catch(e => say(err(e)));
   await all();
 }
