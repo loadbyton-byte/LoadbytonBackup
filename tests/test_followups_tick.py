@@ -24,8 +24,8 @@ class Mail:
     def __init__(self):
         self.outbox = []
 
-    def send(self, to, subject, text, html=None):
-        self.outbox.append({"to": to, "subject": subject, "text": text})
+    def send(self, to, subject, text, html=None, headers=None):
+        self.outbox.append({"to": to, "subject": subject, "text": text, "headers": headers or {}})
 
 
 def make(autosend=True):
@@ -77,22 +77,21 @@ def test_form_lead_without_whatsapp_window_gets_email_not_whatsapp():
     assert "STOP" not in mail.outbox[0]["text"] and "unsubscribe" in mail.outbox[0]["text"].lower()
 
 
-def test_phone_only_lead_outside_window_waits_for_template_approval():
+def test_phone_only_lead_outside_window_is_skipped_until_templates_exist():
     db, fu, wa, mail = make()
     lead = add_lead(db, email=None)
     fu.enroll(lead, "new_lead", NOW)
     fu.tick(NOW)
     t = status(db)
-    assert t["status"] == "queued_for_approval" and "24" in t["note"] and wa.sent == []
+    assert t["status"] == "skipped" and "24 hours" in t["note"] and wa.sent == []
 
 
-def test_public_signal_lead_is_skipped_with_reason():
+def test_public_signal_lead_is_never_enrolled():
     db, fu, wa, mail = make()
     lead = add_lead(db, consent_status="public_signal")
-    fu.enroll(lead, "new_lead", NOW)
+    assert fu.enroll(lead, "new_lead", NOW) == []
     fu.tick(NOW)
-    t = status(db)
-    assert t["status"] == "skipped" and "opt-in" in t["note"] and wa.sent == [] and mail.outbox == []
+    assert db.one("SELECT COUNT(*) n FROM touches")["n"] == 0 and wa.sent == [] and mail.outbox == []
 
 
 def test_opt_out_between_enrol_and_send_sends_nothing():

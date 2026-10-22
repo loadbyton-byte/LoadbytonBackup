@@ -71,8 +71,10 @@ def test_status_won_viewing_and_reply_stop_the_run():
 
 def test_repeat_enquiry_counts_as_reply():
     c = client()
+    c.put("/followups/settings", json={"autosend": True})
     c.post("/capture", json=FORM)
-    c.post("/capture", json=FORM)                                                       # same person writes again
+    c.post("/maintenance/followups")                                                    # we write to them first...
+    c.post("/capture", json=FORM)                                                       # ...and they write again
     assert c.app.state.db.one("SELECT COUNT(*) n FROM sequence_runs WHERE state='stopped' AND stop_reason='replied'")["n"] == 2
 
 
@@ -105,7 +107,10 @@ def test_whatsapp_inbound_stops_run(monkeypatch):
     c = client()
     c.post("/capture", json=FORM)
     fu = c.app.state.followups
-    assert fu.stop_for_phone("+971501234567", "replied") == 2
+    assert fu.stop_for_phone("+971501234567") == 0                                      # nothing sent yet: the chat that made the lead is not a reply
+    c.put("/followups/settings", json={"autosend": True})
+    c.post("/maintenance/followups")
+    assert fu.stop_for_phone("+971501234567") == 2
 
 
 def test_stats_endpoint_and_inventory_import_queues_alerts():

@@ -65,8 +65,8 @@ export async function render(el) {
   });
   $('#fu-save', el).addEventListener('click', async () => {
     const out = [...el.querySelectorAll('.fu-sequence')].map(d => ({
-      name: seqs[Number(d.dataset.si)].name, trigger: seqs[Number(d.dataset.si)].trigger, enabled: $('.fu-enabled', d).checked,
-      steps: [...d.querySelectorAll('.fu-step')].map(f => ({ delay_hours: Number($('.fu-delay', f).value), channel: $('.fu-channel', f).value,
+      name: seqs[Number(d.dataset.si)].name, trigger: seqs[Number(d.dataset.si)].trigger, min_consent: seqs[Number(d.dataset.si)].min_consent, enabled: $('.fu-enabled', d).checked,
+      steps: [...d.querySelectorAll('.fu-step')].map(f => ({ delay_hours: $('.fu-delay', f).value === '' ? null : Number($('.fu-delay', f).value), channel: $('.fu-channel', f).value,
         template_en: $('.fu-en', f).value, template_ar: $('.fu-ar', f).value || null })) }));
     try { await put('/followups/sequences', out); say('#fu-save-msg', esc(t('fu_saved'))); await loadSeqs(); } catch (e) { say('#fu-save-msg', err(e)); }
   });

@@ -46,3 +46,18 @@ def test_maintain_runs_the_worker_for_every_workspace(tmp_path):
     TestClient(app).post(f"/t/{t.public_key}/capture", json=FORM)
     results, errors = maintain(st)
     assert errors == [] and results[0]["followups"]["queued"] == 1
+
+
+def test_unsubscribe_link_works_through_the_public_workspace_path(tmp_path):
+    app, mailer = make_app(tmp_path)
+    c, h = signed_in(app, mailer)
+    anon = TestClient(app)
+    anon.post(f"/t/{key_of(c)}/capture", json=FORM)
+    lead = c.get("/leads").json()[0]["id"]
+    tenant = app.state.tenants.app_for(c.get("/auth/me").json()["workspace"]["id"])
+    url = tenant.state.followups.unsubscribe_url(lead)
+    assert url.startswith(f"http://testserver/t/{key_of(c)}/unsubscribe?t=")
+    path = url.replace("http://testserver", "")
+    assert anon.get(path).status_code == 200 and c.get("/leads").json() != []
+    assert anon.post(path).status_code == 200 and c.get("/leads").json() == []
+    assert anon.get(f"/t/{key_of(c)}/unsubscribe?t=bad").status_code == 404

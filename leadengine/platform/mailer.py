@@ -13,7 +13,7 @@ log = logging.getLogger("leadengine.mail")
 
 
 class Mailer(Protocol):
-    def send(self, to: str, subject: str, text: str, html: str | None = None) -> None: ...
+    def send(self, to: str, subject: str, text: str, html: str | None = None, headers: dict | None = None) -> None: ...
 
 
 def _check(to: str, subject: str) -> None:
@@ -30,9 +30,9 @@ class ConsoleMailer:
         self.outbox: list[dict] = []
         self.log_body = log_body
 
-    def send(self, to: str, subject: str, text: str, html: str | None = None) -> None:
+    def send(self, to: str, subject: str, text: str, html: str | None = None, headers: dict | None = None) -> None:
         _check(to, subject)
-        self.outbox.append({"to": to, "subject": subject, "text": text, "html": html})
+        self.outbox.append({"to": to, "subject": subject, "text": text, "html": html, **({"headers": dict(headers)} if headers else {})})
         del self.outbox[:-200]
         if self.log_body:
             log.warning("DEV MAIL to=%s subject=%s\n%s", to, subject, text)
@@ -44,10 +44,13 @@ class SmtpMailer:
     def __init__(self, settings: Settings):
         self.s = settings
 
-    def send(self, to: str, subject: str, text: str, html: str | None = None) -> None:
+    def send(self, to: str, subject: str, text: str, html: str | None = None, headers: dict | None = None) -> None:
         _check(to, subject)
         msg = EmailMessage()
         msg["From"], msg["To"], msg["Subject"] = self.s.mail_from, to, subject
+        for k, v in (headers or {}).items():
+            _check(k, v)
+            msg[k] = v
         msg.set_content(text)
         if html:
             msg.add_alternative(html, subtype="html")

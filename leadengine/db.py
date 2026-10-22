@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS web_sessions(
 CREATE INDEX IF NOT EXISTS ix_web_sessions_expires ON web_sessions(expires_at);
 CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS sequences(
-  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, trigger TEXT NOT NULL, enabled INTEGER DEFAULT 1,
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, trigger TEXT NOT NULL, enabled INTEGER DEFAULT 1, min_consent TEXT DEFAULT 'opted_in',
   steps TEXT NOT NULL, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS sequence_runs(
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS sequence_runs(
 CREATE TABLE IF NOT EXISTS touches(
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL REFERENCES sequence_runs(id) ON DELETE CASCADE,
   lead_id INTEGER NOT NULL, step_index INTEGER NOT NULL, channel TEXT NOT NULL, due_at TEXT NOT NULL, status TEXT DEFAULT 'pending',
-  body TEXT, note TEXT, attempts INTEGER DEFAULT 0, last_error TEXT, sent_at TEXT, approved_by TEXT, UNIQUE(run_id, step_index)
+  body TEXT, note TEXT, attempts INTEGER DEFAULT 0, last_error TEXT, sent_at TEXT, approved_by TEXT, claimed_at TEXT, UNIQUE(run_id, step_index)
 );
 CREATE INDEX IF NOT EXISTS ix_touches_due ON touches(status, due_at);
 CREATE TABLE IF NOT EXISTS stats(key TEXT PRIMARY KEY, value INTEGER DEFAULT 0);
@@ -97,6 +97,8 @@ MIGRATIONS: list[tuple[str, str, str]] = [
     ("signals", "origin_basis", "TEXT"),
     ("spend", "country", "TEXT"),
     ("spend", "city", "TEXT"),
+    ("sequences", "min_consent", "TEXT DEFAULT 'opted_in'"),
+    ("touches", "claimed_at", "TEXT"),
 ]
 
 

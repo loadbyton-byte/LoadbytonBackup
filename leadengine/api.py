@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -99,6 +99,10 @@ class ViewingIn(BaseModel):
     agent_id: int | None = None
 
 
+def esc_attr(v: str) -> str:
+    return str(v).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 class FollowupSettingsIn(BaseModel):
     autosend: bool
 
@@ -138,13 +142,12 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     fu = Followups(db, pipe.compliance, s, wa_sender, make_mailer(s))
 
     def lead_event(lead_id: int, created: bool, sig) -> None:
-        """Speed-to-lead: a consented/enquiring lead is enrolled; a repeat message from a known lead is a reply and ends their sequences."""
+        """Speed-to-lead: the lead is enrolled in every sequence its consent level allows; a repeat message from someone we already wrote to
+        is a reply and ends their sequences."""
         reply = sig.platform == "whatsapp" or sig.source_type in FORM_SOURCES
         if not created and reply:
-            fu.stop(lead_id, "replied")
-        status = db.one("SELECT consent_status FROM leads WHERE id=?", (lead_id,))
-        if status and status["consent_status"] in ("opted_in", "enquiry"):
-            fu.enroll(lead_id, "new_lead", exclude=("first_response",) if sig.platform == "whatsapp" else ())
+            fu.stop_if_replied(lead_id)
+        fu.enroll(lead_id, "new_lead", exclude=("first_response",) if sig.platform == "whatsapp" else ())
 
     pipe.on_lead_event = lead_event
     reg = ConnectorRegistry()
@@ -244,7 +247,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
             raise HTTPException(401, "bad signature")
         inbound = parse_inbound(json.loads(body))
         for m in inbound:
-            fu.stop_for_phone(m.wa_id, "replied")
+            fu.stop_for_phone(m.wa_id)
         return [handle_inbound(pipe, wa_sender, m) for m in inbound]
 
     @app.post("/webhooks/form/{platform}")
@@ -308,6 +311,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
         if not db.one("SELECT 1 FROM leads WHERE id=?", (lead_id,)):
             raise HTTPException(404, "lead not found")
         pipe.record_consent(lead_id, p.evidence_text)
+        fu.enroll(lead_id, "new_lead")                                                  # newly opted in: nurture can start
         return {"ok": True}
 
     @app.delete("/leads/{lead_id}")
@@ -447,6 +451,26 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     @app.post("/followups/runs/{lead_id}/pause")
     def fu_pause(lead_id: int, _=Depends(auth)):
         return {"stopped": fu.stop(lead_id, "paused")}
+
+    @app.get("/unsubscribe", response_class=HTMLResponse)
+    def unsubscribe_page(t: str = ""):
+        """Public one-click unsubscribe target for follow-up emails. GET shows a confirmation; the POST does the work (link scanners only GET)."""
+        if fu.verify_unsubscribe(t) is None:
+            return HTMLResponse("<!doctype html><meta charset=utf-8><title>Unsubscribe</title><p>This link is not valid.</p>", 404)
+        return HTMLResponse('<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Unsubscribe</title>'
+                            f'<form method=post action="?t={esc_attr(t)}"><p>Stop all messages from {esc_attr(s.agency_name)}?</p>'
+                            '<button type=submit>Unsubscribe</button></form>')
+
+    @app.post("/unsubscribe", response_class=HTMLResponse)
+    def unsubscribe(t: str = ""):
+        lead_id = fu.verify_unsubscribe(t)
+        if lead_id is None:
+            return HTMLResponse("<!doctype html><meta charset=utf-8><title>Unsubscribe</title><p>This link is not valid.</p>", 404)
+        row = db.one("SELECT phone, email FROM leads WHERE id=?", (lead_id,))
+        if row:
+            pipe.opt_out(row["phone"], row["email"])
+        return HTMLResponse("<!doctype html><meta charset=utf-8><title>Unsubscribed</title><p>You are unsubscribed and your details were removed. "
+                            "We will not message you again.</p>")
 
     @app.get("/followups/stats")
     def fu_stats(_=Depends(auth)):
