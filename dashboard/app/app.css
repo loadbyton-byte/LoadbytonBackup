@@ -90,4 +90,5 @@ dialog::backdrop{background:#0f1714aa}
  body.nav-open::after{content:"";position:fixed;inset:0;background:#0f171466;z-index:10}
  #menu-btn{display:inline-block}
 }
+.fu-step{border:1px solid var(--line);border-radius:8px;margin:8px 0;padding:8px}.fu-step label{display:block;margin:6px 0}.fu-step textarea,.fu-body{width:100%}.fu-item{border-top:1px solid var(--line);padding:10px 0}
 @media (prefers-reduced-motion:reduce){.side{transition:none}}

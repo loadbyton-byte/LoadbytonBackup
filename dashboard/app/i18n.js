@@ -1,5 +1,10 @@
 export const T = {
   en: {
+    nav_followups: 'Follow-up', fu_autosend: 'Send approved-type messages automatically', fu_autosend_note: 'Off by default: messages wait here for a person to approve them. When on, messages go out on their own, but only to people who gave consent, inside allowed hours, and never to anyone who opted out.', fu_live: 'Real delivery connected -', fu_yes: 'yes', fu_no: 'not yet (messages are recorded only)',
+    fu_stats: 'Speed to lead', fu_median: 'Median first response', fu_sla: 'Within reply target', fu_queued: 'Waiting for approval', fu_failed: 'Failed',
+    fu_queue: 'Approval queue', fu_empty: 'Nothing is waiting for approval.', fu_message: 'Message', fu_approve: 'Approve and send', fu_skip: 'Skip',
+    fu_sequences: 'Sequences', fu_enabled: 'Enabled', fu_step: 'Step', fu_delay: 'Send after (hours)', fu_channel: 'Channel', fu_ch_auto: 'Best available', fu_ch_whatsapp: 'WhatsApp', fu_ch_email: 'Email',
+    fu_text_en: 'English text', fu_text_ar: 'Arabic text (optional)', fu_save: 'Save sequences', fu_saved: 'Saved.', fu_auto_on: 'Automatic sending is on.', fu_auto_off: 'Automatic sending is off.',
     st_pub_title: 'Public pages', st_pub_note: 'Share these links, or embed them on your website (add your website under allowed origins first). Visitors see results without giving details; a lead is created only with their consent.',
     st_pub_views: 'Views', st_pub_submits: 'Calculations', st_pub_leads: 'Leads', st_pub_started: 'Started', st_pub_completed: 'Completed', st_pub_declined: 'Declined',
     st_pub_t_affordability: 'How much can I afford?', st_pub_t_costs: 'Buying costs', st_pub_t_yield: 'Rental yield', st_pub_t_mortgage: 'Monthly mortgage payment', st_pub_t_concierge: 'Find my options (guided chat)',
@@ -46,6 +51,11 @@ export const T = {
     st_role_manager: 'Manager', st_role_agent: 'Agent', st_none: '— none —', st_invited: 'Invitation sent.',
   },
   ar: {
+    nav_followups: 'المتابعة', fu_autosend: 'إرسال الرسائل تلقائياً', fu_autosend_note: 'متوقف افتراضياً: تنتظر الرسائل هنا موافقة شخص. عند التشغيل تُرسل الرسائل تلقائياً، لكن فقط لمن وافق على التواصل وضمن الساعات المسموحة، ولا تُرسل أبداً لمن ألغى الاشتراك.', fu_live: 'الإرسال الفعلي متصل -', fu_yes: 'نعم', fu_no: 'ليس بعد (تُسجَّل الرسائل فقط)',
+    fu_stats: 'سرعة الرد على العميل', fu_median: 'متوسط أول رد', fu_sla: 'ضمن هدف الرد', fu_queued: 'بانتظار الموافقة', fu_failed: 'فشل',
+    fu_queue: 'قائمة الموافقات', fu_empty: 'لا شيء بانتظار الموافقة.', fu_message: 'الرسالة', fu_approve: 'وافق وأرسل', fu_skip: 'تخطَّ',
+    fu_sequences: 'التسلسلات', fu_enabled: 'مفعّل', fu_step: 'الخطوة', fu_delay: 'الإرسال بعد (ساعات)', fu_channel: 'القناة', fu_ch_auto: 'الأنسب المتاح', fu_ch_whatsapp: 'واتساب', fu_ch_email: 'بريد إلكتروني',
+    fu_text_en: 'النص بالإنجليزية', fu_text_ar: 'النص بالعربية (اختياري)', fu_save: 'حفظ التسلسلات', fu_saved: 'تم الحفظ.', fu_auto_on: 'الإرسال التلقائي مفعّل.', fu_auto_off: 'الإرسال التلقائي متوقف.',
     st_pub_title: 'الصفحات العامة', st_pub_note: 'شارك هذه الروابط أو ضمّنها في موقعك (أضف موقعك أولاً ضمن النطاقات المسموحة). يرى الزوار النتائج دون تقديم بيانات؛ ولا يُنشأ عميل إلا بموافقتهم.',
     st_pub_views: 'المشاهدات', st_pub_submits: 'الحسابات', st_pub_leads: 'العملاء', st_pub_started: 'بدأوا', st_pub_completed: 'أكملوا', st_pub_declined: 'رفضوا',
     st_pub_t_affordability: 'كم يمكنني أن أتحمّل؟', st_pub_t_costs: 'تكاليف الشراء', st_pub_t_yield: 'العائد الإيجاري', st_pub_t_mortgage: 'القسط الشهري للرهن', st_pub_t_concierge: 'اعثر على خياراتي (محادثة موجّهة)',

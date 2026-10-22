@@ -34,7 +34,7 @@ Answer every new lead within seconds and keep it warm for up to 90 days with bil
 
 ## Interfaces
 - API: `GET/PUT /followups/sequences`, `GET /followups/queue`, `POST /followups/{id}/approve|skip`, `POST /followups/runs/{lead_id}/pause`, `POST /maintenance/followups` (single mode), `GET /followups/stats`.
-- Roles: owner/manager manage sequences and settings; agents approve touches for their own leads.
+- Roles: owner/manager manage sequences, settings and the queue; approval is manager/owner only (decision during build: agents work in WhatsApp/phone; widening later is a one-line RBAC change).
 - Dashboard: Follow-up page (queue, sequences editor, on/off switch) EN/AR.
 - Platform: `maintain` calls the worker for every workspace.
 
