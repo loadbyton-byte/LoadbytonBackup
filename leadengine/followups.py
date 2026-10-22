@@ -121,7 +121,7 @@ class _Config:
             c.execute("INSERT OR REPLACE INTO kv(key,value) VALUES('followups_autosend',?)", ("1" if on else "0",))
 
     # ------------------------------------------------------------------ enrolment
-    def enroll(self, lead_id: int, trigger: str, now: datetime | None = None) -> list[int]:
+    def enroll(self, lead_id: int, trigger: str, now: datetime | None = None, exclude: tuple = ()) -> list[int]:
         """Start every enabled sequence for this trigger that the lead is not already in. Returns the new run ids."""
         self.ensure_defaults()
         now = now or utcnow()
@@ -130,6 +130,8 @@ class _Config:
         runs: list[int] = []
         with self.db.tx() as c:
             for seq in c.execute("SELECT * FROM sequences WHERE enabled=1 AND trigger=?", (trigger,)).fetchall():
+                if seq["name"] in exclude:
+                    continue
                 cur = c.execute("INSERT OR IGNORE INTO sequence_runs(lead_id,sequence_id,state,started_at) VALUES(?,?,?,?)",
                                 (lead_id, seq["id"], "active", now.isoformat()))
                 if not cur.rowcount:

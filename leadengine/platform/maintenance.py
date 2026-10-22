@@ -27,7 +27,7 @@ def maintain(s: Settings) -> tuple[list[dict], list[dict]]:
             with tenants.lease(row["id"]) as app:
                 pipe = app.state.pipeline
                 results.append({"workspace_id": row["id"], "name": row["name"], "escalate": pipe.distribution.escalate_overdue(),
-                                "purge": pipe.compliance.purge_expired()})
+                                "purge": pipe.compliance.purge_expired(), "followups": app.state.followups.tick()})
         except Exception as e:                                         # isolate: report and continue
             errors.append({"workspace_id": row["id"], "name": row["name"], "error": f"{type(e).__name__}: {e}"[:300]})
     return results, errors

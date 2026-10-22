@@ -41,7 +41,7 @@ LIMIT_AUTH, LIMIT_PUBLIC, LIMIT_API, LIMIT_OTHER = 32 * 1024, 256 * 1024, 8 * 10
 REGISTER_FLOOR_S, FORGOT_FLOOR_S = 0.4, 0.15      # minimum response time: new and existing addresses look alike
 # First path segment of the workspace API (what the dispatcher takes over). Everything else belongs to the platform app.
 TENANT_PREFIXES = frozenset("leads agents tasks roi spend inventory viewings viewings.ics radar stats audit ingest connectors tools markets "
-                            "maintenance demo overview magnets".split())
+                            "maintenance demo overview magnets followups".split())
 PUBLIC_EXACT = frozenset({"/capture", "/widget.js", "/optout", "/webhooks/meta", "/webhooks/whatsapp"})
 PUBLIC_FORM = re.compile(r"^/webhooks/form/[a-z0-9_-]{1,32}$")
 PUBLIC_PAGES = re.compile(r"^/p(/(affordability|costs|yield|mortgage|concierge|lead))?$")        # lead magnets + concierge

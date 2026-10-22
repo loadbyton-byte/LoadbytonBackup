@@ -29,8 +29,10 @@ from .magnets.pages import install as install_magnets
 from .platform import site as sitelib
 from .nba import next_actions, todays_tasks
 from .outreach import draft
-from .pipeline import Pipeline
+from .pipeline import FORM_SOURCES, Pipeline
 from .radar import demand_radar
+from .followups import Followups, FollowupError, SequenceError
+from .platform.mailer import make_mailer
 from .viewings import ViewingConflict, feed_token, list_viewings, schedule as schedule_viewing, to_ics
 from .roi import MarketTagError, record_spend, roi_report
 
@@ -97,6 +99,14 @@ class ViewingIn(BaseModel):
     agent_id: int | None = None
 
 
+class FollowupSettingsIn(BaseModel):
+    autosend: bool
+
+
+class ApproveIn(BaseModel):
+    body: str | None = None
+
+
 class ActivityIn(BaseModel):
     kind: str
     channel: str | None = None
@@ -125,13 +135,25 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     pipe = Pipeline(db, s)
     limiter = RateLimiter(5, 10 * 60)
     wa_sender = whatsapp_sender or make_sender(s)
+    fu = Followups(db, pipe.compliance, s, wa_sender, make_mailer(s))
+
+    def lead_event(lead_id: int, created: bool, sig) -> None:
+        """Speed-to-lead: a consented/enquiring lead is enrolled; a repeat message from a known lead is a reply and ends their sequences."""
+        reply = sig.platform == "whatsapp" or sig.source_type in FORM_SOURCES
+        if not created and reply:
+            fu.stop(lead_id, "replied")
+        status = db.one("SELECT consent_status FROM leads WHERE id=?", (lead_id,))
+        if status and status["consent_status"] in ("opted_in", "enquiry"):
+            fu.enroll(lead_id, "new_lead", exclude=("first_response",) if sig.platform == "whatsapp" else ())
+
+    pipe.on_lead_event = lead_event
     reg = ConnectorRegistry()
     meta, forms = MetaLeadAdsConnector(s), FormWebhookConnector(s)
     for c in (RedditConnector(s), ApifyConnector(s), meta, forms):
         reg.register(c)
 
     app = FastAPI(title="DigitalBurj Leads", version="1.0.0")
-    app.state.pipeline, app.state.db, app.state.settings = pipe, db, s
+    app.state.pipeline, app.state.db, app.state.settings, app.state.followups = pipe, db, s, fu
     app.mount("/static", StaticFiles(directory=DASH.parent), name="static")
     app.mount("/site-static", StaticFiles(directory=sitelib.SITE_DIR / "static"), name="site-static")
 
@@ -220,7 +242,10 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
         body = await request.body()
         if not verify_hmac(s.meta_app_secret, body, x_hub_signature_256):
             raise HTTPException(401, "bad signature")
-        return [handle_inbound(pipe, wa_sender, m) for m in parse_inbound(json.loads(body))]
+        inbound = parse_inbound(json.loads(body))
+        for m in inbound:
+            fu.stop_for_phone(m.wa_id, "replied")
+        return [handle_inbound(pipe, wa_sender, m) for m in inbound]
 
     @app.post("/webhooks/form/{platform}")
     async def form_hook(platform: str, request: Request, x_signature: str = Header(default="")):
@@ -274,6 +299,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
                 c.execute("INSERT INTO activities(lead_id,ts,kind,note) VALUES(?,?,?,?)", (lead_id, utcnow().isoformat(), f"status:{p.status}", p.note))
         if not n:
             raise HTTPException(404, "lead not found")
+        if p.status in ("won", "lost"):
+            fu.stop(lead_id, "closed")
         return {"ok": True}
 
     @app.post("/leads/{lead_id}/consent")
@@ -374,6 +401,57 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
     def escalate(_=Depends(auth)):
         return pipe.distribution.escalate_overdue()
 
+    # ---------------------------------------------------------------- follow-up engine
+    @app.get("/followups/sequences")
+    def fu_sequences(_=Depends(auth)):
+        fu.ensure_defaults()
+        return fu.sequences()
+
+    @app.put("/followups/sequences")
+    def fu_put_sequences(payload: list[dict], _=Depends(auth)):
+        try:
+            return fu.put_sequences(payload)
+        except SequenceError as e:
+            raise HTTPException(422, str(e))
+
+    @app.get("/followups/settings")
+    def fu_settings(_=Depends(auth)):
+        return {"autosend": fu.autosend(), "whatsapp_live": type(wa_sender).__name__ != "DryRunSender",
+                "email_live": type(fu.mailer).__name__ != "ConsoleMailer"}
+
+    @app.put("/followups/settings")
+    def fu_set_settings(p: FollowupSettingsIn, _=Depends(auth)):
+        fu.set_autosend(p.autosend)
+        db.audit("api", "followups_autosend", None, on=p.autosend)
+        return fu_settings()
+
+    @app.get("/followups/queue")
+    def fu_queue(_=Depends(auth)):
+        return fu.queue()
+
+    @app.post("/followups/{touch_id}/approve")
+    def fu_approve(touch_id: int, p: ApproveIn | None = None, _=Depends(auth)):
+        try:
+            return fu.approve(touch_id, "api", body=p.body if p else None)
+        except FollowupError as e:
+            raise HTTPException(e.code, str(e))
+
+    @app.post("/followups/{touch_id}/skip")
+    def fu_skip(touch_id: int, _=Depends(auth)):
+        try:
+            fu.skip(touch_id, "api")
+        except FollowupError as e:
+            raise HTTPException(e.code, str(e))
+        return {"ok": True}
+
+    @app.post("/followups/runs/{lead_id}/pause")
+    def fu_pause(lead_id: int, _=Depends(auth)):
+        return {"stopped": fu.stop(lead_id, "paused")}
+
+    @app.post("/maintenance/followups")
+    def fu_tick(_=Depends(auth)):
+        return fu.tick()
+
     # ---------------------------------------------------------------- intelligence / ops
     @app.get("/radar")
     def radar(days: int = 14, _=Depends(auth)):
@@ -430,6 +508,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, whatsapp_
             raise HTTPException(409, str(e))
         except ValueError as e:
             raise HTTPException(422, str(e))
+        fu.stop(lead_id, "viewing_booked")
         return {"id": vid}
 
     @app.get("/viewings")

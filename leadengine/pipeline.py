@@ -43,6 +43,7 @@ class Pipeline:
         self.compliance = Compliance(db, self.s)
         self.distribution = Distribution(db)
         self.llm_refiner = llm_refiner
+        self.on_lead_event = None             # optional callback (lead_id, created, signal), set by the API layer; must never break ingest
 
     # ------------------------------------------------------------------ ingest
     def ingest(self, sig: Signal) -> IngestResult:
@@ -90,6 +91,11 @@ class Pipeline:
         if lead["tier"] in ("HOT", "WARM") and lead["assigned_agent_id"] is None:
             self.distribution.assign(lead_id)
         self.db.audit("system", "ingest", lead_id, platform=sig.platform, source_type=sig.source_type, label=it.label)
+        if self.on_lead_event:
+            try:
+                self.on_lead_event(lead_id, created, sig)
+            except Exception:
+                self.db.bump("hook_errors")
         return IngestResult("created" if created else "merged", lead_id, lead["score"], lead["tier"])
 
     def ingest_many(self, signals: list[Signal]) -> dict:
