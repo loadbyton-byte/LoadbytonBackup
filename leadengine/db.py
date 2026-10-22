@@ -44,6 +44,22 @@ CREATE TABLE IF NOT EXISTS web_sessions(
   token_hash TEXT PRIMARY KEY, state TEXT NOT NULL, lang TEXT, ip_hash TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_web_sessions_expires ON web_sessions(expires_at);
+CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS sequences(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, trigger TEXT NOT NULL, enabled INTEGER DEFAULT 1,
+  steps TEXT NOT NULL, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS sequence_runs(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  sequence_id INTEGER NOT NULL REFERENCES sequences(id) ON DELETE CASCADE, state TEXT DEFAULT 'active',
+  started_at TEXT, stopped_at TEXT, stop_reason TEXT, UNIQUE(lead_id, sequence_id)
+);
+CREATE TABLE IF NOT EXISTS touches(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL REFERENCES sequence_runs(id) ON DELETE CASCADE,
+  lead_id INTEGER NOT NULL, step_index INTEGER NOT NULL, channel TEXT NOT NULL, due_at TEXT NOT NULL, status TEXT DEFAULT 'pending',
+  body TEXT, note TEXT, attempts INTEGER DEFAULT 0, last_error TEXT, sent_at TEXT, approved_by TEXT, UNIQUE(run_id, step_index)
+);
+CREATE INDEX IF NOT EXISTS ix_touches_due ON touches(status, due_at);
 CREATE TABLE IF NOT EXISTS stats(key TEXT PRIMARY KEY, value INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS spend(
   id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL, campaign TEXT, period TEXT NOT NULL, amount_aed REAL NOT NULL
