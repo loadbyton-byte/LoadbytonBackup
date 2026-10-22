@@ -1,4 +1,4 @@
-import { esc, t, api, post, state, err, applyData, isManager } from './core.js';
+import { esc, t, api, post, state, err, applyData, isManager, money } from './core.js';
 import { navigate } from './router.js';
 
 export async function render(el) {
@@ -12,7 +12,7 @@ export async function render(el) {
   const bw = 100 / o.trend.length;
   const tile = (k, v) => `<div class="tile"><b data-kpi="${esc(k)}">${esc(v)}</b><span>${esc(t(k))}</span></div>`;
   el.innerHTML = `<h1>${esc(t('ov_title'))}</h1>
-    <div class="tiles">${tile('ov_new_today', o.new_today)}${tile('ov_hot', o.hot)}${tile('ov_warm', o.warm)}${tile('ov_overdue', o.overdue)}${tile('ov_sla', o.within_sla_pct == null ? '—' : o.within_sla_pct + '%')}</div>
+    <div class="tiles">${tile('ov_new_today', o.new_today)}${tile('ov_hot', o.hot)}${tile('ov_warm', o.warm)}${tile('ov_overdue', o.overdue)}${tile('ov_sla', o.within_sla_pct == null ? '—' : o.within_sla_pct + '%')}${tile('ov_pipeline', money(o.pipeline_value_aed))}${tile('ov_expected', money(o.expected_commission_aed))}</div>
     ${total === 0 ? `<div class="card empty"><p>${esc(t('ov_empty'))}</p>${state.me.role === 'owner' ? `<p><button id="seed" class="primary" type="button">${esc(t('ov_seed'))}</button></p><p id="seed-msg" class="mute"></p>` : ''}</div>` : ''}
     <div class="grid2"><div>
       <div class="card"><h2>${esc(t('ov_trend'))}</h2>

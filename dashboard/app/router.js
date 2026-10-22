@@ -4,6 +4,7 @@ export const PAGES = [
   { id: 'overview', roles: ['owner', 'manager'], load: () => import('./overview.js') },
   { id: 'leads', roles: ['owner', 'manager', 'agent'], load: () => import('./leads.js') },
   { id: 'tasks', roles: ['owner', 'manager', 'agent'], load: () => import('./tasks.js') },
+  { id: 'deals', roles: ['owner', 'manager', 'agent'], load: () => import('./deals.js') },
   { id: 'agents', roles: ['owner', 'manager'], load: () => import('./agents.js') },
   { id: 'inventory', roles: ['owner', 'manager'], load: () => import('./inventory.js') },
   { id: 'followups', roles: ['owner', 'manager'], load: () => import('./followups.js') },
